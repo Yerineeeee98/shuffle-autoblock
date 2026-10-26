@@ -19,11 +19,8 @@ Shuffle TI workflow, which adds them to the FortiGate block group.
 Add the 4 macros in `macros.conf` to the TA-cip-ti-feed app.
 Change the index and sourcetype in `cip_ab_dhcp_logs` to your own DHCP logs.
 
-1. Settings > Advanced search > Search macros > New Search Macro
-2. Destination app: TA-cip-ti-feed
-3. Name: the name in brackets in macros.conf (for example cip_ab_logs)
-4. Definition: the text after definition = . Leave Arguments empty and "Use eval-based definition" unchecked
-5. Save, then in the macro list set Permissions to This app only (or All apps) so the alert can use it
+Settings > Advanced search > Search macros > New Search Macro
+  
 
 ## 2. Alert settings
 
