@@ -15,11 +15,19 @@ in Criminal IP and blocks the risky ones on FortiGate.
 
 ## 1. Macros
 
-Add the 6 macros in `macros.conf` first (Settings > Advanced search > Search macros).
+Add the 6 macros in `macros.conf` first (Settings > Advanced search > Search macros), in the app where you will create the alerts.
 Change the index and sourcetype in `cip_sc_traffic`, `cip_sc_threat_logs`, `cip_sc_dhcp` and
 `cip_sc_defender_alerts` to your own. The alerts use only these macros, so the SPL files do not need changes.
 
 ## 2. Alert settings (same for all 5)
+
+Create each alert in the same app as the macros (the alerts can only use macros they can see).
+
+1. Open the app > **Search**, and paste the content of one `.spl` file
+2. **Save As** > **Alert**, and enter a title (for example `scen_1_risky_port`)
+3. Set the values in the table below
+4. **Add Actions** > **Webhook**, and enter the Webhook URL of the Shuffle workflow
+5. **Save**, then repeat for the other 4 files
 
 | Setting | Value |
 |---|---|
@@ -55,6 +63,10 @@ Shuffle auto-blocks an IP only when `cond1=met` **and** Criminal IP finds it ris
 - Rule 2: 3+ failures from the same PC on 2+ firewalls within 10 minutes
 
 ## 4. Health check (scheduled report)
+
+1. Open the same app > **Search**, and paste the content of `scen_health_check.spl`
+2. **Save As** > **Report**, and enter a title
+3. In the report, **Edit** > **Edit Schedule**, and set the values below
 
 | Setting | Value |
 |---|---|
