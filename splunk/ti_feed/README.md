@@ -23,6 +23,12 @@ Change the index and sourcetype in `cip_ab_dhcp_logs` to your own DHCP logs.
 
 Create the alert in the TA-cip-ti-feed app (it uses the app's macros and lookup).
 
+1. Open the TA-cip-ti-feed app > **Search**, and paste the content of `ti_autoblock_alert.spl`
+2. **Save As** > **Alert**, and enter a title (for example `ti_autoblock_alert`)
+3. Set the values in the table below
+4. **Add Actions** > **Webhook**, and enter the Webhook URL of the Shuffle TI workflow
+5. **Save**
+
 | Setting | Value |
 |---|---|
 | Alert type | Scheduled, run on cron schedule |
@@ -69,11 +75,17 @@ Only the `auto_block` rows are sent to Shuffle.
 
 ## 5. Health check (scheduled report)
 
+1. Open the TA-cip-ti-feed app > **Search**, and paste the content of `health_check.spl`
+2. **Save As** > **Report**, and enter a title
+3. In the report, **Edit** > **Edit Schedule**, and set the values below
+
 | Setting | Value |
 |---|---|
 | Schedule | Cron `8 * * * *` (every hour at minute 8) |
 | Time range | Last 24 hours (the search itself reads the last 15 minutes) |
 | Schedule window | No window |
-| Saves to | `index=summary source="ti_autoblock_health"` |
+
+No setting is needed to save the result: the last line of the search
+(`| collect index=summary source="ti_autoblock_health"`) saves it.
 
 It writes one row with a verdict (`OK`, `Warning: ...`, `Problem: ...`) that names the macro to check.
