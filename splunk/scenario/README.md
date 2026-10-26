@@ -7,7 +7,7 @@ in Criminal IP and blocks the risky ones on FortiGate.
 | File | Scenario (`scen_id`) | Trigger |
 |---|---|---|
 | `1_risky_port.spl` | Risky port access (`outbound_riskport`) | Connection to a public IP on port 22, 445, 1104, 3306 or 3389 |
-| `2_non_standard_port.spl` | Non-standard port access (`outbound_nonstd_port`) | TCP/UDP to a public IP on a port that is not 80, 443 or a risky port |
+| `2_non_standard_port.spl` | Non-standard port access (`outbound_nonstd_port`) | TCP/UDP to a public IP on a port that is not 80, 443 or a risky port. Only public IPs with 3+ sessions are sent to Shuffle |
 | `3_phishing.spl` | Phishing / malicious link click (`phishing_click`) | Web filter block, or antivirus detection with "phish" or "redir" in its name |
 | `4_malware.spl` | Malware infection (`malware_outbound`) | Defender malware alert, or firewall antivirus detection |
 | `5_admin_login.spl` | Firewall admin login (`login_outbound`) | Admin login (see the login rules below) |
@@ -57,6 +57,8 @@ The searches read the last 15 minutes (`-16m@m` to `-1m@m`) and trigger only on 
 | Scenario fields | e.g. `hit_port`, `blocked_host`, `mw_threat`, `login_user`, `cond_reason` |
 
 Shuffle auto-blocks an IP only when `cond1=met` **and** Criminal IP finds it risky.
+Alert 2 (non-standard port) sends only the `cond1=met` rows (only these can be auto-blocked, so only these go to Criminal IP).
+The other alerts send every public IP, and the IPs without `cond1=met` are saved as recommendations.
 
 **Login rules (scenario 5)**
 - Rule 1: 3+ failures then a success, from the same PC, account and firewall, within 10 minutes
