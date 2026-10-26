@@ -1,0 +1,2637 @@
+{
+    "title": "TI Auto-Block Status",
+    "description": "Criminal IP TI candidate decisions and firewall auto-block results",
+    "inputs": {
+        "input_time": {
+            "options": {
+                "defaultValue": "-7d@h,now",
+                "token": "global_time"
+            },
+            "title": "Time range",
+            "type": "input.timerange"
+        }
+    },
+    "defaults": {
+        "dataSources": {
+            "ds.search": {
+                "options": {
+                    "queryParameters": {
+                        "earliest": "$global_time.earliest$",
+                        "latest": "$global_time.latest$"
+                    }
+                }
+            }
+        },
+        "tokens": {
+            "default": {}
+        }
+    },
+    "visualizations": {
+        "g_donut": {
+            "options": {
+                "fillColor": "#22265a",
+                "rx": 10,
+                "strokeColor": "#353b82"
+            },
+            "type": "splunk.rectangle"
+        },
+        "g_grade": {
+            "options": {
+                "fillColor": "#22265a",
+                "rx": 10,
+                "strokeColor": "#353b82"
+            },
+            "type": "splunk.rectangle"
+        },
+        "g_kpi": {
+            "options": {
+                "fillColor": "#22265a",
+                "rx": 10,
+                "strokeColor": "#353b82"
+            },
+            "type": "splunk.rectangle"
+        },
+        "g_tbl_evidence": {
+            "options": {
+                "fillColor": "#22265a",
+                "rx": 10,
+                "strokeColor": "#353b82"
+            },
+            "type": "splunk.rectangle"
+        },
+        "g_tbl_history": {
+            "options": {
+                "fillColor": "#22265a",
+                "rx": 10,
+                "strokeColor": "#353b82"
+            },
+            "type": "splunk.rectangle"
+        },
+        "g_trend": {
+            "options": {
+                "fillColor": "#22265a",
+                "rx": 10,
+                "strokeColor": "#353b82"
+            },
+            "type": "splunk.rectangle"
+        },
+        "grade_y": {
+            "options": {
+                "fontColor": "#9aa0c8",
+                "fontSize": "small",
+                "markdown": "IPs"
+            },
+            "type": "splunk.markdown"
+        },
+        "gt_donut": {
+            "options": {
+                "fontColor": "#ffffff",
+                "fontSize": "small",
+                "markdown": "**Decision by candidate**"
+            },
+            "type": "splunk.markdown"
+        },
+        "gt_grade": {
+            "options": {
+                "fontColor": "#ffffff",
+                "fontSize": "small",
+                "markdown": "**Auto-blocked IPs by grade (all time)**"
+            },
+            "type": "splunk.markdown"
+        },
+        "gt_kpi": {
+            "options": {
+                "fontColor": "#ffffff",
+                "fontSize": "small",
+                "markdown": "**Auto-block overview**"
+            },
+            "type": "splunk.markdown"
+        },
+        "gt_tbl_evidence": {
+            "options": {
+                "fontColor": "#ffffff",
+                "fontSize": "small",
+                "markdown": "**Auto-block evidence logs (firewall detections used for the decision)**"
+            },
+            "type": "splunk.markdown"
+        },
+        "gt_tbl_history": {
+            "options": {
+                "fontColor": "#ffffff",
+                "fontSize": "small",
+                "markdown": "**Auto-block history**"
+            },
+            "type": "splunk.markdown"
+        },
+        "gt_trend": {
+            "options": {
+                "fontColor": "#ffffff",
+                "fontSize": "small",
+                "markdown": ""
+            },
+            "type": "splunk.markdown"
+        },
+        "h_bg": {
+            "options": {
+                "fillColor": "#22265a",
+                "rx": 10,
+                "strokeColor": "#353b82"
+            },
+            "type": "splunk.rectangle"
+        },
+        "h_guide": {
+            "context": {
+                "rowBg": [
+                    "#22265a",
+                    "#272c66"
+                ],
+                "stateColors": [
+                    {
+                        "match": "OK",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "Warning",
+                        "value": "#f2b866"
+                    },
+                    {
+                        "match": "Problem",
+                        "value": "#ff6b6b"
+                    },
+                    {
+                        "match": "Stopped",
+                        "value": "#ff6b6b"
+                    },
+                    {
+                        "match": "No record",
+                        "value": "#9aa0c8"
+                    }
+                ],
+                "strFmt": {
+                    "string": {}
+                }
+            },
+            "dataSources": {
+                "primary": "ds_health_guide"
+            },
+            "options": {
+                "backgroundColor": "transparent",
+                "columnFormat": {
+                    "Meaning": {
+                        "data": "> table | seriesByName(\"Meaning\") | formatByType(strFmt)"
+                    },
+                    "Status": {
+                        "data": "> table | seriesByName(\"Status\") | formatByType(strFmt)",
+                        "rowColors": "> table | seriesByName(\"Status\") | matchValue(stateColors)"
+                    },
+                    "Where to check": {
+                        "data": "> table | seriesByName(\"Where to check\") | formatByType(strFmt)"
+                    },
+                    "Words shown in the Verdict column": {
+                        "data": "> table | seriesByName(\"Words shown in the Verdict column\") | formatByType(strFmt)"
+                    }
+                },
+                "count": 8,
+                "tableFormat": {
+                    "headerBackgroundColor": "#4b3fb0",
+                    "headerColor": "#ffffff",
+                    "rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+                }
+            },
+            "title": "How to read the verdict (where to check on Problem or Warning)",
+            "type": "splunk.table"
+        },
+        "h_last": {
+            "dataSources": {
+                "primary": "ds_health_last"
+            },
+            "options": {
+                "backgroundColor": "transparent",
+                "majorColor": "#D1E9F6",
+                "majorFontSize": 40,
+                "sparklineDisplay": "off",
+                "trendDisplay": "off"
+            },
+            "title": "Last check",
+            "type": "splunk.singlevalue"
+        },
+        "h_lg_bad": {
+            "options": {
+                "fontColor": "#ff6b6b",
+                "markdown": "**● Problem** : no logs, no traffic logs, or 5%+ of logs missing a required value (source, destination, device, session)"
+            },
+            "type": "splunk.markdown"
+        },
+        "h_lg_ok": {
+            "options": {
+                "fontColor": "#7fd6a4",
+                "markdown": "**● OK** : normal"
+            },
+            "type": "splunk.markdown"
+        },
+        "h_lg_stop": {
+            "options": {
+                "fontColor": "#ff6b6b",
+                "markdown": "**● Stopped** : no health check record for more than 2 hours (check the scheduled report)"
+            },
+            "type": "splunk.markdown"
+        },
+        "h_lg_warn": {
+            "options": {
+                "fontColor": "#f2b866",
+                "markdown": "**● Warning** : no threat logs, or 5%+ of threat logs with unknown direction"
+            },
+            "type": "splunk.markdown"
+        },
+        "h_state": {
+            "context": {
+                "stateColors": [
+                    {
+                        "match": "OK",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "Warning",
+                        "value": "#f2b866"
+                    },
+                    {
+                        "match": "Problem",
+                        "value": "#ff6b6b"
+                    },
+                    {
+                        "match": "Stopped",
+                        "value": "#ff6b6b"
+                    },
+                    {
+                        "match": "No record",
+                        "value": "#9aa0c8"
+                    }
+                ]
+            },
+            "dataSources": {
+                "primary": "ds_health_state"
+            },
+            "options": {
+                "backgroundColor": "transparent",
+                "majorColor": "> majorValue | matchValue(stateColors)",
+                "majorFontSize": 56,
+                "sparklineDisplay": "off",
+                "trendDisplay": "off"
+            },
+            "title": "Health status",
+            "type": "splunk.singlevalue"
+        },
+        "h_t1": {
+            "options": {
+                "fillColor": "#2a2f6c",
+                "rx": 10,
+                "strokeColor": "#2a2f6c"
+            },
+            "type": "splunk.rectangle"
+        },
+        "h_t2": {
+            "options": {
+                "fillColor": "#2a2f6c",
+                "rx": 10,
+                "strokeColor": "#2a2f6c"
+            },
+            "type": "splunk.rectangle"
+        },
+        "h_table": {
+            "context": {
+                "rowBg": [
+                    "#22265a",
+                    "#272c66"
+                ],
+                "stateColors": [
+                    {
+                        "match": "OK",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "Warning",
+                        "value": "#f2b866"
+                    },
+                    {
+                        "match": "Problem",
+                        "value": "#ff6b6b"
+                    },
+                    {
+                        "match": "Stopped",
+                        "value": "#ff6b6b"
+                    },
+                    {
+                        "match": "No record",
+                        "value": "#9aa0c8"
+                    }
+                ],
+                "strFmt": {
+                    "string": {}
+                }
+            },
+            "dataSources": {
+                "primary": "ds_health_hist"
+            },
+            "options": {
+                "backgroundColor": "transparent",
+                "columnFormat": {
+                    "Status": {
+                        "data": "> table | seriesByName(\"Status\") | formatByType(strFmt)",
+                        "rowColors": "> table | seriesByName(\"Status\") | matchValue(stateColors)"
+                    }
+                },
+                "count": 12,
+                "tableFormat": {
+                    "headerBackgroundColor": "#4b3fb0",
+                    "headerColor": "#ffffff",
+                    "rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+                }
+            },
+            "title": "Health check history (last 24 hours)",
+            "type": "splunk.table"
+        },
+        "h_title": {
+            "options": {
+                "fontColor": "#ffffff",
+                "fontSize": "small",
+                "markdown": "**Macro health check (every hour, based on the last 15 minutes of logs)**"
+            },
+            "type": "splunk.markdown"
+        },
+        "k_cand": {
+            "dataSources": {
+                "primary": "ds_cand"
+            },
+            "options": {
+                "backgroundColor": "transparent",
+                "majorColor": "#D1E9F6",
+                "majorFontSize": 56,
+                "showSparklineAreaGraph": true,
+                "sparklineDisplay": "below",
+                "sparklineStrokeColor": "#5aa6e6",
+                "trendDisplay": "off"
+            },
+            "title": "Critical / High",
+            "type": "splunk.singlevalue"
+        },
+        "k_fail": {
+            "context": {
+                "failColor": [
+                    {
+                        "to": 1,
+                        "value": "#F6EACB"
+                    },
+                    {
+                        "from": 1,
+                        "value": "#ff6b6b"
+                    }
+                ]
+            },
+            "dataSources": {
+                "primary": "ds_fail"
+            },
+            "options": {
+                "backgroundColor": "transparent",
+                "majorColor": "> majorValue | rangeValue(failColor)",
+                "majorFontSize": 56,
+                "showSparklineAreaGraph": true,
+                "sparklineDisplay": "below",
+                "sparklineStrokeColor": "#d9a93a",
+                "trendDisplay": "off"
+            },
+            "title": "Failed IP",
+            "type": "splunk.singlevalue"
+        },
+        "lg0": {
+            "options": {
+                "fillColor": "#e0789f",
+                "rx": 3,
+                "strokeColor": "#e0789f"
+            },
+            "type": "splunk.rectangle"
+        },
+        "lg1": {
+            "options": {
+                "fillColor": "#5aa6e6",
+                "rx": 3,
+                "strokeColor": "#5aa6e6"
+            },
+            "type": "splunk.rectangle"
+        },
+        "lg2": {
+            "options": {
+                "fillColor": "#d9a93a",
+                "rx": 3,
+                "strokeColor": "#d9a93a"
+            },
+            "type": "splunk.rectangle"
+        },
+        "lg3": {
+            "options": {
+                "fillColor": "#8a8fbf",
+                "rx": 3,
+                "strokeColor": "#8a8fbf"
+            },
+            "type": "splunk.rectangle"
+        },
+        "lgt0": {
+            "options": {
+                "fontColor": "#c9cdf2",
+                "fontSize": "small",
+                "markdown": "Auto-block"
+            },
+            "type": "splunk.markdown"
+        },
+        "lgt1": {
+            "options": {
+                "fontColor": "#c9cdf2",
+                "fontSize": "small",
+                "markdown": "Advisory · partial conditions"
+            },
+            "type": "splunk.markdown"
+        },
+        "lgt2": {
+            "options": {
+                "fontColor": "#c9cdf2",
+                "fontSize": "small",
+                "markdown": "Advisory · investigation incomplete"
+            },
+            "type": "splunk.markdown"
+        },
+        "lgt3": {
+            "options": {
+                "fontColor": "#c9cdf2",
+                "fontSize": "small",
+                "markdown": "Advisory · no evidence"
+            },
+            "type": "splunk.markdown"
+        },
+        "md_sub": {
+            "options": {
+                "fontColor": "#c9cdf2",
+                "fontSize": "small",
+                "markdown": "Criminal IP TI candidate decisions · firewall auto-block · evidence logs"
+            },
+            "type": "splunk.markdown"
+        },
+        "md_title": {
+            "options": {
+                "fontColor": "#ffffff",
+                "markdown": "# TI Feed Auto-Block Status"
+            },
+            "type": "splunk.markdown"
+        },
+        "p_bg": {
+            "options": {
+                "fillColor": "#22265a",
+                "rx": 10,
+                "strokeColor": "#353b82"
+            },
+            "type": "splunk.rectangle"
+        },
+        "p_btn": {
+            "options": {
+                "fontColor": "#ffffff",
+                "markdown": "**$prep:result.btn$**"
+            },
+            "type": "splunk.markdown"
+        },
+        "p_btn_bg": {
+            "context": {
+                "stateColors": [
+                    {
+                        "match": "ok",
+                        "value": "#2f8f5b"
+                    },
+                    {
+                        "match": "setup",
+                        "value": "#a8701f"
+                    },
+                    {
+                        "match": "ti",
+                        "value": "#a8453f"
+                    },
+                    {
+                        "match": "unsupported",
+                        "value": "#a8453f"
+                    }
+                ]
+            },
+            "dataSources": {
+                "primary": "ds_status"
+            },
+            "options": {
+                "fillColor": "> primary | seriesByName(\"state\") | lastPoint() | matchValue(stateColors)",
+                "rx": 22,
+                "strokeColor": "#ffffff",
+                "strokeWidth": 0
+            },
+            "type": "splunk.rectangle"
+        },
+        "p_card": {
+            "options": {
+                "fontColor": "#d6d9f5",
+                "markdown": "$prep:result.desc$"
+            },
+            "type": "splunk.markdown"
+        },
+        "p_card_bg": {
+            "context": {
+                "stateColors": [
+                    {
+                        "match": "ok",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "setup",
+                        "value": "#f2b866"
+                    },
+                    {
+                        "match": "ti",
+                        "value": "#f28b82"
+                    },
+                    {
+                        "match": "unsupported",
+                        "value": "#f28b82"
+                    }
+                ]
+            },
+            "dataSources": {
+                "primary": "ds_status"
+            },
+            "options": {
+                "fillColor": "#2a2f6c",
+                "rx": 12,
+                "strokeColor": "> primary | seriesByName(\"state\") | lastPoint() | matchValue(stateColors)",
+                "strokeWidth": 2
+            },
+            "type": "splunk.rectangle"
+        },
+        "p_card_line": {
+            "options": {
+                "fillColor": "#3a3f80",
+                "strokeColor": "#3a3f80",
+                "strokeWidth": 0
+            },
+            "type": "splunk.rectangle"
+        },
+        "p_card_tech": {
+            "options": {
+                "fontColor": "#9aa0c8",
+                "fontSize": "small",
+                "markdown": "ⓘ Info  :  $prep:result.tech$"
+            },
+            "type": "splunk.markdown"
+        },
+        "p_card_title": {
+            "options": {
+                "fontColor": "#ffffff",
+                "markdown": "## $prep:result.title$"
+            },
+            "type": "splunk.markdown"
+        },
+        "p_close": {
+            "containerOptions": {
+                "visibility": {
+                    "hideWhenNoData": true
+                }
+            },
+            "context": {
+                "rowBg": [
+                    "#22265a",
+                    "#272c66"
+                ],
+                "strFmt": {
+                    "string": {}
+                }
+            },
+            "dataSources": {
+                "primary": "ds_find_close"
+            },
+            "eventHandlers": [
+                {
+                    "options": {
+                        "tokens": [
+                            {
+                                "key": "row.Menu.value",
+                                "token": "show_find"
+                            },
+                            {
+                                "key": "row.Menu.value",
+                                "token": "x_loc"
+                            },
+                            {
+                                "key": "row.Menu.value",
+                                "token": "x_kind"
+                            },
+                            {
+                                "key": "row.Menu.value",
+                                "token": "x_n"
+                            },
+                            {
+                                "key": "row.Menu.value",
+                                "token": "x_used"
+                            }
+                        ]
+                    },
+                    "type": "drilldown.setToken"
+                }
+            ],
+            "options": {
+                "backgroundColor": "#22265a",
+                "columnFormat": {
+                    "Menu": {
+                        "data": "> table | seriesByName(\"Menu\") | formatByType(strFmt)"
+                    }
+                },
+                "count": 1,
+                "headerVisibility": "none",
+                "tableFormat": {
+                    "rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+                }
+            },
+            "type": "splunk.table"
+        },
+        "p_detail": {
+            "containerOptions": {
+                "visibility": {
+                    "hideWhenNoData": true
+                }
+            },
+            "context": {
+                "rowBg": [
+                    "#22265a",
+                    "#272c66"
+                ],
+                "stColors": [
+                    {
+                        "match": "✅ In use by auto-block",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "✅ Detection logs found",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "⚠️ Check manually",
+                        "value": "#f2b866"
+                    },
+                    {
+                        "match": "ℹ️ No recent detection",
+                        "value": "#9fd3f5"
+                    },
+                    {
+                        "match": "— Not for auto-block",
+                        "value": "#9aa0c8"
+                    },
+                    {
+                        "match": "✅ Meets condition",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "ℹ️ Below condition",
+                        "value": "#9fd3f5"
+                    },
+                    {
+                        "match": "✅ Confirmed",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "⚠️ Needs check",
+                        "value": "#f2b866"
+                    },
+                    {
+                        "match": "— None",
+                        "value": "#9aa0c8"
+                    },
+                    {
+                        "match": "Meets auto-block condition",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "Below condition",
+                        "value": "#9fd3f5"
+                    },
+                    {
+                        "match": "Looks like a detection log",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "Related words only",
+                        "value": "#f2b866"
+                    }
+                ],
+                "strFmt": {
+                    "string": {}
+                }
+            },
+            "dataSources": {
+                "primary": "ds_x_detail"
+            },
+            "eventHandlers": [
+                {
+                    "options": {
+                        "tokens": [
+                            {
+                                "key": "row.Item.value",
+                                "token": "x_kind"
+                            },
+                            {
+                                "key": "row.Item.value",
+                                "token": "x_n"
+                            }
+                        ]
+                    },
+                    "type": "drilldown.setToken"
+                }
+            ],
+            "options": {
+                "backgroundColor": "transparent",
+                "columnFormat": {
+                    "Description": {
+                        "data": "> table | seriesByName(\"Description\") | formatByType(strFmt)"
+                    },
+                    "Item": {
+                        "data": "> table | seriesByName(\"Item\") | formatByType(strFmt)"
+                    },
+                    "Sample record (key fields)": {
+                        "data": "> table | seriesByName(\"Sample record (key fields)\") | formatByType(strFmt)"
+                    },
+                    "Verdict": {
+                        "data": "> table | seriesByName(\"Verdict\") | formatByType(strFmt)",
+                        "rowColors": "> table | seriesByName(\"Verdict\") | matchValue(stColors)"
+                    },
+                    "View all (click)": {
+                        "data": "> table | seriesByName(\"View all (click)\") | formatByType(strFmt)"
+                    }
+                },
+                "count": 3,
+                "tableFormat": {
+                    "headerBackgroundColor": "#4b3fb0",
+                    "headerColor": "#ffffff",
+                    "rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+                }
+            },
+            "title": "② Details  (click a row with 'View' to see the record list)",
+            "type": "splunk.table"
+        },
+        "p_find": {
+            "containerOptions": {
+                "visibility": {
+                    "hideWhenNoData": true
+                }
+            },
+            "context": {
+                "rowBg": [
+                    "#22265a",
+                    "#272c66"
+                ],
+                "stColors": [
+                    {
+                        "match": "✅ In use by auto-block",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "✅ Detection logs found",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "⚠️ Check manually",
+                        "value": "#f2b866"
+                    },
+                    {
+                        "match": "ℹ️ No recent detection",
+                        "value": "#9fd3f5"
+                    },
+                    {
+                        "match": "— Not for auto-block",
+                        "value": "#9aa0c8"
+                    },
+                    {
+                        "match": "✅ Meets condition",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "ℹ️ Below condition",
+                        "value": "#9fd3f5"
+                    },
+                    {
+                        "match": "✅ Confirmed",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "⚠️ Needs check",
+                        "value": "#f2b866"
+                    },
+                    {
+                        "match": "— None",
+                        "value": "#9aa0c8"
+                    },
+                    {
+                        "match": "Meets auto-block condition",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "Below condition",
+                        "value": "#9fd3f5"
+                    },
+                    {
+                        "match": "Looks like a detection log",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "Related words only",
+                        "value": "#f2b866"
+                    }
+                ],
+                "strFmt": {
+                    "string": {}
+                }
+            },
+            "dataSources": {
+                "primary": "ds_x_main"
+            },
+            "eventHandlers": [
+                {
+                    "options": {
+                        "tokens": [
+                            {
+                                "key": "row.Log location.value",
+                                "token": "x_loc"
+                            },
+                            {
+                                "key": "row.Status.value",
+                                "token": "x_used"
+                            },
+                            {
+                                "key": "row.Log location.value",
+                                "token": "x_kind"
+                            },
+                            {
+                                "key": "row.Log location.value",
+                                "token": "x_n"
+                            }
+                        ]
+                    },
+                    "type": "drilldown.setToken"
+                }
+            ],
+            "options": {
+                "backgroundColor": "transparent",
+                "columnFormat": {
+                    "Log location": {
+                        "data": "> table | seriesByName(\"Log location\") | formatByType(strFmt)"
+                    },
+                    "Status": {
+                        "data": "> table | seriesByName(\"Status\") | formatByType(strFmt)",
+                        "rowColors": "> table | seriesByName(\"Status\") | matchValue(stColors)"
+                    },
+                    "To do": {
+                        "data": "> table | seriesByName(\"To do\") | formatByType(strFmt)"
+                    },
+                    "What was found": {
+                        "data": "> table | seriesByName(\"What was found\") | formatByType(strFmt)"
+                    }
+                },
+                "count": 8,
+                "tableFormat": {
+                    "headerBackgroundColor": "#4b3fb0",
+                    "headerColor": "#ffffff",
+                    "rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+                }
+            },
+            "title": "① Results  (click a row to see the details below)",
+            "type": "splunk.table"
+        },
+        "p_info_bg1": {
+            "options": {
+                "fillColor": "#22265a",
+                "rx": 10,
+                "strokeColor": "#3a3f80",
+                "strokeWidth": 1
+            },
+            "type": "splunk.rectangle"
+        },
+        "p_info_bg2": {
+            "options": {
+                "fillColor": "#22265a",
+                "rx": 10,
+                "strokeColor": "#3a3f80",
+                "strokeWidth": 1
+            },
+            "type": "splunk.rectangle"
+        },
+        "p_info_l1": {
+            "options": {
+                "fontColor": "#9aa0c8",
+                "fontSize": "small",
+                "markdown": "Firewall"
+            },
+            "type": "splunk.markdown"
+        },
+        "p_info_l2": {
+            "options": {
+                "fontColor": "#9aa0c8",
+                "fontSize": "small",
+                "markdown": "Logs in use"
+            },
+            "type": "splunk.markdown"
+        },
+        "p_info_v1": {
+            "options": {
+                "fontColor": "#ffffff",
+                "fontSize": "large",
+                "markdown": "**$prep:result.fw$**"
+            },
+            "type": "splunk.markdown"
+        },
+        "p_info_v2": {
+            "options": {
+                "fontColor": "#ffffff",
+                "fontSize": "large",
+                "markdown": "**$prep:result.loc$**"
+            },
+            "type": "splunk.markdown"
+        },
+        "p_legend": {
+            "containerOptions": {
+                "visibility": {
+                    "hideWhenNoData": true
+                }
+            },
+            "context": {
+                "rowBg": [
+                    "#22265a",
+                    "#272c66"
+                ],
+                "stColors": [
+                    {
+                        "match": "✅ In use by auto-block",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "✅ Detection logs found",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "⚠️ Check manually",
+                        "value": "#f2b866"
+                    },
+                    {
+                        "match": "ℹ️ No recent detection",
+                        "value": "#9fd3f5"
+                    },
+                    {
+                        "match": "— Not for auto-block",
+                        "value": "#9aa0c8"
+                    },
+                    {
+                        "match": "✅ Meets condition",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "ℹ️ Below condition",
+                        "value": "#9fd3f5"
+                    },
+                    {
+                        "match": "✅ Confirmed",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "⚠️ Needs check",
+                        "value": "#f2b866"
+                    },
+                    {
+                        "match": "— None",
+                        "value": "#9aa0c8"
+                    },
+                    {
+                        "match": "Meets auto-block condition",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "Below condition",
+                        "value": "#9fd3f5"
+                    },
+                    {
+                        "match": "Looks like a detection log",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "Related words only",
+                        "value": "#f2b866"
+                    }
+                ],
+                "strFmt": {
+                    "string": {}
+                }
+            },
+            "dataSources": {
+                "primary": "ds_find_legend"
+            },
+            "description": "Finds attack, malware file and risky site records in Splunk that auto-block can use.",
+            "options": {
+                "backgroundColor": "transparent",
+                "columnFormat": {
+                    "Meaning": {
+                        "data": "> table | seriesByName(\"Meaning\") | formatByType(strFmt)"
+                    },
+                    "Status": {
+                        "data": "> table | seriesByName(\"Status\") | formatByType(strFmt)",
+                        "rowColors": "> table | seriesByName(\"Status\") | matchValue(stColors)"
+                    }
+                },
+                "count": 5,
+                "headerVisibility": "none",
+                "tableFormat": {
+                    "headerBackgroundColor": "#4b3fb0",
+                    "headerColor": "#ffffff",
+                    "rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+                }
+            },
+            "title": "How to read the results",
+            "type": "splunk.table"
+        },
+        "p_list": {
+            "containerOptions": {
+                "visibility": {
+                    "hideWhenNoData": true
+                }
+            },
+            "context": {
+                "rowBg": [
+                    "#22265a",
+                    "#272c66"
+                ],
+                "stColors": [
+                    {
+                        "match": "✅ In use by auto-block",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "✅ Detection logs found",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "⚠️ Check manually",
+                        "value": "#f2b866"
+                    },
+                    {
+                        "match": "ℹ️ No recent detection",
+                        "value": "#9fd3f5"
+                    },
+                    {
+                        "match": "— Not for auto-block",
+                        "value": "#9aa0c8"
+                    },
+                    {
+                        "match": "✅ Meets condition",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "ℹ️ Below condition",
+                        "value": "#9fd3f5"
+                    },
+                    {
+                        "match": "✅ Confirmed",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "⚠️ Needs check",
+                        "value": "#f2b866"
+                    },
+                    {
+                        "match": "— None",
+                        "value": "#9aa0c8"
+                    },
+                    {
+                        "match": "Meets auto-block condition",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "Below condition",
+                        "value": "#9fd3f5"
+                    },
+                    {
+                        "match": "Looks like a detection log",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "Related words only",
+                        "value": "#f2b866"
+                    }
+                ],
+                "strFmt": {
+                    "string": {}
+                }
+            },
+            "dataSources": {
+                "primary": "ds_x_list"
+            },
+            "eventHandlers": [
+                {
+                    "options": {
+                        "tokens": [
+                            {
+                                "key": "row.No.value",
+                                "token": "x_n"
+                            }
+                        ]
+                    },
+                    "type": "drilldown.setToken"
+                }
+            ],
+            "options": {
+                "backgroundColor": "transparent",
+                "columnFormat": {
+                    "Action": {
+                        "data": "> table | seriesByName(\"Action\") | formatByType(strFmt)"
+                    },
+                    "Class": {
+                        "data": "> table | seriesByName(\"Class\") | formatByType(strFmt)",
+                        "rowColors": "> table | seriesByName(\"Class\") | matchValue(stColors)"
+                    },
+                    "Name": {
+                        "data": "> table | seriesByName(\"Name\") | formatByType(strFmt)"
+                    },
+                    "No": {
+                        "data": "> table | seriesByName(\"No\") | formatByType(strFmt)"
+                    },
+                    "Severity": {
+                        "data": "> table | seriesByName(\"Severity\") | formatByType(strFmt)"
+                    },
+                    "Time": {
+                        "data": "> table | seriesByName(\"Time\") | formatByType(strFmt)"
+                    },
+                    "Type": {
+                        "data": "> table | seriesByName(\"Type\") | formatByType(strFmt)"
+                    }
+                },
+                "count": 20,
+                "tableFormat": {
+                    "headerBackgroundColor": "#4b3fb0",
+                    "headerColor": "#ffffff",
+                    "rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+                }
+            },
+            "title": "③ $x_kind$ records (last 4 hours, matching ones first, up to 20)  ·  click a row to see the raw log",
+            "type": "splunk.table"
+        },
+        "p_next": {
+            "options": {
+                "fontColor": "#ffffff",
+                "markdown": "$prep:result.next$"
+            },
+            "type": "splunk.markdown"
+        },
+        "p_next_label": {
+            "options": {
+                "fontColor": "#9aa0c8",
+                "markdown": "**Next step**"
+            },
+            "type": "splunk.markdown"
+        },
+        "p_raw": {
+            "containerOptions": {
+                "visibility": {
+                    "hideWhenNoData": true
+                }
+            },
+            "context": {
+                "rowBg": [
+                    "#22265a",
+                    "#272c66"
+                ],
+                "stColors": [
+                    {
+                        "match": "✅ In use by auto-block",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "✅ Detection logs found",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "⚠️ Check manually",
+                        "value": "#f2b866"
+                    },
+                    {
+                        "match": "ℹ️ No recent detection",
+                        "value": "#9fd3f5"
+                    },
+                    {
+                        "match": "— Not for auto-block",
+                        "value": "#9aa0c8"
+                    },
+                    {
+                        "match": "✅ Meets condition",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "ℹ️ Below condition",
+                        "value": "#9fd3f5"
+                    },
+                    {
+                        "match": "✅ Confirmed",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "⚠️ Needs check",
+                        "value": "#f2b866"
+                    },
+                    {
+                        "match": "— None",
+                        "value": "#9aa0c8"
+                    },
+                    {
+                        "match": "Meets auto-block condition",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "Below condition",
+                        "value": "#9fd3f5"
+                    },
+                    {
+                        "match": "Looks like a detection log",
+                        "value": "#7fd6a4"
+                    },
+                    {
+                        "match": "Related words only",
+                        "value": "#f2b866"
+                    }
+                ],
+                "strFmt": {
+                    "string": {}
+                }
+            },
+            "dataSources": {
+                "primary": "ds_x_raw"
+            },
+            "options": {
+                "backgroundColor": "transparent",
+                "columnFormat": {
+                    "Item": {
+                        "data": "> table | seriesByName(\"Item\") | formatByType(strFmt)"
+                    },
+                    "Value": {
+                        "data": "> table | seriesByName(\"Value\") | formatByType(strFmt)"
+                    }
+                },
+                "count": 80,
+                "tableFormat": {
+                    "headerBackgroundColor": "#4b3fb0",
+                    "headerColor": "#ffffff",
+                    "rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+                }
+            },
+            "title": "④ Raw log (No. $x_n$)",
+            "type": "splunk.table"
+        },
+        "p_title": {
+            "options": {
+                "fontColor": "#ffffff",
+                "markdown": "## Auto-block setup\nChecks whether the firewall logs that auto-block needs are ready."
+            },
+            "type": "splunk.markdown"
+        },
+        "p_toggle": {
+            "context": {
+                "rowBg": [
+                    "#22265a",
+                    "#272c66"
+                ],
+                "strFmt": {
+                    "string": {}
+                }
+            },
+            "dataSources": {
+                "primary": "ds_find_toggle"
+            },
+            "eventHandlers": [
+                {
+                    "options": {
+                        "tokens": [
+                            {
+                                "key": "row.Menu.value",
+                                "token": "show_find"
+                            },
+                            {
+                                "key": "row.Menu.value",
+                                "token": "x_loc"
+                            },
+                            {
+                                "key": "row.Menu.value",
+                                "token": "x_kind"
+                            },
+                            {
+                                "key": "row.Menu.value",
+                                "token": "x_n"
+                            },
+                            {
+                                "key": "row.Menu.value",
+                                "token": "x_used"
+                            }
+                        ]
+                    },
+                    "type": "drilldown.setToken"
+                }
+            ],
+            "options": {
+                "backgroundColor": "#22265a",
+                "columnFormat": {
+                    "Menu": {
+                        "data": "> table | seriesByName(\"Menu\") | formatByType(strFmt)"
+                    }
+                },
+                "count": 1,
+                "headerVisibility": "none",
+                "tableFormat": {
+                    "rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+                }
+            },
+            "type": "splunk.table"
+        },
+        "sv_last": {
+            "dataSources": {
+                "primary": "ds_last"
+            },
+            "options": {
+                "backgroundColor": "transparent",
+                "majorColor": "#D1E9F6",
+                "majorFontSize": 24,
+                "sparklineDisplay": "off",
+                "trendDisplay": "off"
+            },
+            "title": "Critical / High  last detection",
+            "type": "splunk.singlevalue"
+        },
+        "sv_ratio": {
+            "dataSources": {
+                "primary": "ds_ratio"
+            },
+            "options": {
+                "backgroundColor": "transparent",
+                "majorColor": "#ffffff",
+                "majorFontSize": 22,
+                "sparklineDisplay": "off",
+                "trendDisplay": "off",
+                "underLabel": "",
+                "underLabelFontSize": 11,
+                "unit": "%",
+                "unitPosition": "after"
+            },
+            "type": "splunk.singlevalue"
+        },
+        "t_k_cand": {
+            "options": {
+                "fillColor": "#2a2f6c",
+                "rx": 10,
+                "strokeColor": "#2a2f6c"
+            },
+            "type": "splunk.rectangle"
+        },
+        "t_k_fail": {
+            "options": {
+                "fillColor": "#2a2f6c",
+                "rx": 10,
+                "strokeColor": "#2a2f6c"
+            },
+            "type": "splunk.rectangle"
+        },
+        "t_k_new": {
+            "options": {
+                "fillColor": "#2a2f6c",
+                "rx": 10,
+                "strokeColor": "#2a2f6c"
+            },
+            "type": "splunk.rectangle"
+        },
+        "tbl_evidence": {
+            "context": {
+                "actionColors": [
+                    {
+                        "match": "blocked",
+                        "value": "#EECAD5"
+                    },
+                    {
+                        "match": "dropped",
+                        "value": "#EECAD5"
+                    },
+                    {
+                        "match": "passthrough",
+                        "value": "#F6EACB"
+                    },
+                    {
+                        "match": "detected",
+                        "value": "#F6EACB"
+                    }
+                ],
+                "gradeColors2": [
+                    {
+                        "match": "■ ■ ■ ■   CRITICAL",
+                        "value": "#ff8fab"
+                    },
+                    {
+                        "match": "■ ■ ■ □   HIGH",
+                        "value": "#f2b866"
+                    },
+                    {
+                        "match": "■ ■ □ □   WATCH",
+                        "value": "#9fd3f5"
+                    },
+                    {
+                        "match": "■ □ □ □   INFO",
+                        "value": "#9aa0c8"
+                    }
+                ],
+                "rowBg": [
+                    "#22265a",
+                    "#272c66"
+                ],
+                "strFmt": {
+                    "string": {}
+                }
+            },
+            "dataSources": {
+                "primary": "ds_evidence"
+            },
+            "options": {
+                "backgroundColor": "transparent",
+                "columnFormat": {
+                    "Action": {
+                        "data": "> table | seriesByName(\"Action\") | formatByType(strFmt)",
+                        "rowColors": "> table | seriesByName(\"Action\") | matchValue(actionColors)"
+                    },
+                    "Block grade": {
+                        "data": "> table | seriesByName(\"Block grade\") | formatByType(strFmt)",
+                        "rowColors": "> table | seriesByName(\"Block grade\") | matchValue(gradeColors2)"
+                    }
+                },
+                "count": 8,
+                "tableFormat": {
+                    "headerBackgroundColor": "#4b3fb0",
+                    "headerColor": "#ffffff",
+                    "rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+                }
+            },
+            "type": "splunk.table"
+        },
+        "tbl_history": {
+            "context": {
+                "gradeColors": [
+                    {
+                        "match": "■ ■ ■ ■   CRITICAL",
+                        "value": "#ff8fab"
+                    },
+                    {
+                        "match": "■ ■ ■ □   HIGH",
+                        "value": "#f2b866"
+                    },
+                    {
+                        "match": "■ ■ □ □   WATCH",
+                        "value": "#9fd3f5"
+                    },
+                    {
+                        "match": "■ □ □ □   INFO",
+                        "value": "#9aa0c8"
+                    }
+                ],
+                "resultColors": [
+                    {
+                        "match": "Blocked",
+                        "value": "#EECAD5"
+                    },
+                    {
+                        "match": "Block failed",
+                        "value": "#ff6b6b"
+                    },
+                    {
+                        "match": "Needs check",
+                        "value": "#F6EACB"
+                    }
+                ],
+                "rowBg": [
+                    "#22265a",
+                    "#272c66"
+                ],
+                "strFmt": {
+                    "string": {}
+                }
+            },
+            "dataSources": {
+                "primary": "ds_history"
+            },
+            "options": {
+                "backgroundColor": "transparent",
+                "columnFormat": {
+                    "Block grade": {
+                        "data": "> table | seriesByName(\"Block grade\") | formatByType(strFmt)",
+                        "rowColors": "> table | seriesByName(\"Block grade\") | matchValue(gradeColors)"
+                    },
+                    "Result": {
+                        "data": "> table | seriesByName(\"Result\") | formatByType(strFmt)",
+                        "rowColors": "> table | seriesByName(\"Result\") | matchValue(resultColors)"
+                    }
+                },
+                "count": 8,
+                "tableFormat": {
+                    "headerBackgroundColor": "#4b3fb0",
+                    "headerColor": "#ffffff",
+                    "rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+                }
+            },
+            "type": "splunk.table"
+        },
+        "trend_y": {
+            "options": {
+                "fontColor": "#9aa0c8",
+                "fontSize": "small",
+                "markdown": "IPs"
+            },
+            "type": "splunk.markdown"
+        },
+        "viz_donut": {
+            "dataSources": {
+                "primary": "ds_donut"
+            },
+            "options": {
+                "backgroundColor": "transparent",
+                "labelDisplay": "off",
+                "legendDisplay": "off",
+                "seriesColors": [
+                    "#e0789f",
+                    "#5aa6e6",
+                    "#d9a93a",
+                    "#8a8fbf"
+                ],
+                "seriesColorsByField": {
+                    "Advisory · investigation incomplete": "#d9a93a",
+                    "Advisory · no evidence": "#8a8fbf",
+                    "Advisory · partial conditions": "#5aa6e6",
+                    "Auto-block": "#e0789f"
+                },
+                "showDonutHole": true
+            },
+            "type": "splunk.pie"
+        },
+        "viz_grade": {
+            "dataSources": {
+                "primary": "ds_grade"
+            },
+            "options": {
+                "backgroundColor": "transparent",
+                "legendDisplay": "right",
+                "seriesColorsByField": {
+                    "inbound": "#e0789f",
+                    "outbound": "#5aa6e6"
+                },
+                "seriesSpacing": 5,
+                "stackMode": "stacked",
+                "xAxisTitleVisibility": "hide",
+                "yAxisTitleVisibility": "hide"
+            },
+            "type": "splunk.column"
+        },
+        "viz_k_new": {
+            "dataSources": {
+                "primary": "ds_new"
+            },
+            "options": {
+                "backgroundColor": "transparent",
+                "majorColor": "#EECAD5",
+                "majorFontSize": 56,
+                "showSparklineAreaGraph": true,
+                "sparklineDisplay": "below",
+                "sparklineStrokeColor": "#e0789f",
+                "trendDisplay": "off"
+            },
+            "title": "Block IP",
+            "type": "splunk.singlevalue"
+        },
+        "viz_trend": {
+            "containerOptions": {},
+            "dataSources": {
+                "primary": "ds_trend"
+            },
+            "options": {
+                "backgroundColor": "transparent",
+                "legendDisplay": "right",
+                "seriesColorsByField": {
+                    "Auto-block": "#e0789f",
+                    "Critical candidates": "#d9a93a",
+                    "High candidates": "#5aa6e6"
+                },
+                "stackMode": "auto",
+                "xAxisTitleVisibility": "hide",
+                "yAxisMajorTickInterval": 1,
+                "yAxisTitleVisibility": "hide"
+            },
+            "showLastUpdated": false,
+            "showProgressBar": false,
+            "title": "Daily candidates",
+            "type": "splunk.column"
+        }
+    },
+    "dataSources": {
+        "ds_base": {
+            "name": "Base search",
+            "options": {
+                "query": "index=summary (source=\"ti_autoblock_alert\" OR source=\"ti_autoblock_fg\") | fields _time source match_ip ti_candidate_key ti_direction severity decision decision_reason met_count met_conditions evidence_review_status linked_investigation_count investigation_count detections run_time fg_status fg_text fg_error",
+                "refresh": "5m",
+                "refreshType": "delay"
+            },
+            "type": "ds.search"
+        },
+        "ds_cand": {
+            "name": "ds_cand",
+            "options": {
+                "extend": "ds_base",
+                "query": "| search source=\"ti_autoblock_alert\" | sort 0 _time | streamstats dc(ti_candidate_key) AS v | timechart span=1h max(v) AS v | filldown v | fillnull value=0 v | appendpipe [stats count | where count=0 | eval v=0 | fields v]"
+            },
+            "type": "ds.chain"
+        },
+        "ds_donut": {
+            "name": "ds_donut",
+            "options": {
+                "extend": "ds_base",
+                "query": "| search source=\"ti_autoblock_alert\" | dedup ti_candidate_key | stats count(eval(decision=\"auto_block\")) AS \"Auto-block\" count(eval(decision!=\"auto_block\" AND evidence_review_status!=\"incomplete\" AND met_count>0)) AS \"Advisory · partial conditions\" count(eval(decision!=\"auto_block\" AND evidence_review_status=\"incomplete\")) AS \"Advisory · investigation incomplete\" count(eval(decision!=\"auto_block\" AND evidence_review_status!=\"incomplete\" AND met_count=0)) AS \"Advisory · no evidence\" | transpose column_name=Decision | rename \"row 1\" AS Candidates"
+            },
+            "type": "ds.chain"
+        },
+        "ds_evidence": {
+            "name": "ds_evidence",
+            "options": {
+                "extend": "ds_base",
+                "query": "| search source=\"ti_autoblock_alert\" | dedup ti_candidate_key | where decision=\"auto_block\" | eval ev_line=split(detections,\" || \") | mvexpand ev_line | rex field=ev_line \"^(?<ev_time>\\S+ \\S+) (?<ev_path>\\S+) (?<ev_type>\\S+) (?<ev_name>.+) \\((?<ev_dir>[^,]+), (?<ev_act>[^)]+)\\)$\" | eval Grade_bar=case(severity=\"critical\",\"■ ■ ■ ■   CRITICAL\",severity=\"high\",\"■ ■ ■ □   HIGH\",severity=\"watch\",\"■ ■ □ □   WATCH\",severity=\"info\",\"■ □ □ □   INFO\",true(),upper(severity)) | table match_ip ev_time ev_path ev_type ev_name ev_dir ev_act Grade_bar | rename match_ip AS IP, ev_time AS Time, ev_path AS Path, ev_type AS Type, ev_name AS Detection, ev_dir AS Direction, ev_act AS Action, Grade_bar AS \"Block grade\""
+            },
+            "type": "ds.chain"
+        },
+        "ds_fail": {
+            "name": "ds_fail",
+            "options": {
+                "extend": "ds_base",
+                "query": "| search source=\"ti_autoblock_fg\" (fg_status=\"failed\" OR fg_status=\"unconfirmed\") | sort 0 _time | streamstats dc(match_ip) AS v | timechart span=1h max(v) AS v | filldown v | fillnull value=0 v | appendpipe [stats count | where count=0 | eval v=0 | fields v]"
+            },
+            "type": "ds.chain"
+        },
+        "ds_find_close": {
+            "options": {
+                "query": "| makeresults | where like(\"$show_find$\",\"▶%\") | eval Menu=\"▼ Find logs for auto-block   ·   Check only when setup is needed. (Click to collapse)\" | table Menu",
+                "queryParameters": {
+                    "earliest": "-24h",
+                    "latest": "now"
+                }
+            },
+            "type": "ds.search"
+        },
+        "ds_find_legend": {
+            "options": {
+                "query": "| makeresults count=5 | where like(\"$show_find$\",\"▶%\") | streamstats count AS n | eval Status=case(n=1,\"✅ In use by auto-block\", n=2,\"✅ Detection logs found\", n=3,\"⚠️ Check manually\", n=4,\"ℹ️ No recent detection\", true(),\"— Not for auto-block\"), Meaning=case(n=1,\"Auto-block is reading the detection logs in this location now. The details use the real auto-block conditions.\", n=2,\"Detection logs that auto-block can use were found.\", n=3,\"Related records exist, but please check whether they are real detection logs.\", n=4,\"The logs in use are coming in normally. No attacks or risky activity were found in the last 4 hours.\", true(),\"These records are not needed for the auto-block setup.\") | table Status Meaning",
+                "queryParameters": {
+                    "earliest": "-24h",
+                    "latest": "now"
+                }
+            },
+            "type": "ds.search"
+        },
+        "ds_find_toggle": {
+            "options": {
+                "query": "| makeresults | eval Menu=if(\"$prep:result.state$\"=\"setup\", \"▶ Find logs for auto-block   ·   Setup is needed now. Click to check.\", \"▶ Find logs for auto-block   ·   Check only when setup is needed. (Click to expand)\") | table Menu",
+                "queryParameters": {
+                    "earliest": "-24h",
+                    "latest": "now"
+                }
+            },
+            "type": "ds.search"
+        },
+        "ds_grade": {
+            "name": "Auto-block by grade (all time)",
+            "options": {
+                "query": "index=summary source=\"ti_autoblock_fg\" fg_status=\"registered\" earliest=0 latest=now | dedup match_ip | eval Grade=upper(severity) | chart dc(match_ip) OVER Grade BY ti_direction | append [| makeresults | eval Grade=split(\"CRITICAL,HIGH\",\",\") | mvexpand Grade | fields Grade] | stats sum(*) AS * BY Grade | fillnull value=0 outbound inbound | table Grade outbound inbound",
+                "refresh": "5m",
+                "refreshType": "delay"
+            },
+            "type": "ds.search"
+        },
+        "ds_health_guide": {
+            "name": "Health verdict guide",
+            "options": {
+                "query": "| makeresults count=8 | streamstats count AS n | eval Status=case(n=1,\"Warning\", n=2,\"Warning\", n=3,\"Problem\", n=4,\"Problem\", n=5,\"Problem\", n=6,\"Problem\", n=7,\"Problem\", n=8,\"Stopped\"), Verdict=case(n=1,\"5%+ threat logs with unknown direction\", n=2,\"No threat logs\", n=3,\"No logs\", n=4,\"No traffic logs\", n=5,\"5%+ logs missing source/destination\", n=6,\"5%+ logs missing device name\", n=7,\"5%+ logs missing session value\", n=8,\"(shown in the Health status box)\"), Meaning=case(n=1,\"Many detections where it is unknown who connected first (they are not counted as evidence)\", n=2,\"0 detection records in 15 minutes\", n=3,\"0 logs read in 15 minutes\", n=4,\"0 traffic records\", n=5,\"Many records without source/destination IP\", n=6,\"Many records without the firewall device name\", n=7,\"The number that ties records of one connection is empty, so they cannot be tied\", n=8,\"No health check record for more than 2 hours\"), Check=case(n=1,\"Whether the ab_from_init line in cip_ab_normalize uses the direction field of the firewall logs (FortiGate: direction). Normal if the firewall has no direction info\", n=2,\"There may have been no attacks at that time. If it lasts all day, check the detection log condition in the cip_ab_logs macro\", n=3,\"Whether the log location (index, sourcetype) in the cip_ab_logs macro is where the logs really are\", n=4,\"① Whether the 'log location' in TI Feed app Set up is correct ② If so, whether the ab_is_traffic line in cip_ab_normalize picks out traffic records\", n=5,\"Whether the 'firewall product' chosen in TI Feed app Set up matches the real firewall\", n=6,\"Whether the 'firewall product' chosen in TI Feed app Set up matches the real firewall\", n=7,\"Whether the ab_session line in cip_ab_normalize uses the session number field of the firewall logs (FortiGate: sessionid)\", n=8,\"Whether the scheduled report 'TI Auto-Block Health Check' is enabled and runs at minute 8 every hour\") | table Status Verdict Meaning Check | rename Verdict AS \"Words shown in the Verdict column\", Check AS \"Where to check\"",
+                "queryParameters": {
+                    "earliest": "-24h",
+                    "latest": "now"
+                }
+            },
+            "type": "ds.search"
+        },
+        "ds_health_hist": {
+            "name": "Health history (24h)",
+            "options": {
+                "query": "index=summary source=\"ti_autoblock_health\" earliest=-24h latest=now | sort 0 - _time | eval Status=case(verdict=\"OK\",\"OK\", match(verdict,\"^Warning\"),\"Warning\", true(),\"Problem\") | eval Time=substr(run_time,6,11) | table Time Status verdict n_all n_traffic n_threat n_ips n_av n_web n_noip n_nodev n_nosess n_nodir n_dev | rename verdict AS Verdict, n_all AS \"All logs\", n_traffic AS Traffic, n_threat AS \"Threat logs\", n_ips AS \"IPS cond.\", n_av AS \"AV cond.\", n_web AS \"Web filter cond.\", n_noip AS \"No IP\", n_nodev AS \"No device\", n_nosess AS \"No session\", n_nodir AS \"No direction\", n_dev AS Devices",
+                "refresh": "5m",
+                "refreshType": "delay"
+            },
+            "type": "ds.search"
+        },
+        "ds_health_last": {
+            "name": "Last check",
+            "options": {
+                "query": "index=summary source=\"ti_autoblock_health\" earliest=-24h latest=now | sort 0 - _time | head 1 | eval v=substr(run_time,6,11) | table v | appendpipe [stats count | where count=0 | eval v=\"No record\" | fields v]",
+                "refresh": "5m",
+                "refreshType": "delay"
+            },
+            "type": "ds.search"
+        },
+        "ds_health_state": {
+            "name": "Health status",
+            "options": {
+                "query": "index=summary source=\"ti_autoblock_health\" earliest=-24h latest=now | sort 0 - _time | head 1 | eval Status=case(now()-_time>7200,\"Stopped\", verdict=\"OK\",\"OK\", match(verdict,\"^Warning\"),\"Warning\", true(),\"Problem\") | table Status | appendpipe [stats count | where count=0 | eval Status=\"No record\" | fields Status]",
+                "refresh": "5m",
+                "refreshType": "delay"
+            },
+            "type": "ds.search"
+        },
+        "ds_history": {
+            "name": "ds_history",
+            "options": {
+                "extend": "ds_base",
+                "query": "| search source=\"ti_autoblock_fg\" fg_status!=\"skipped\" | sort 0 - _time | eval Direction=upper(ti_direction), Reason=replace(decision_reason,\"^Auto-block conditions met: \",\"\"), Time=strftime(_time,\"%Y-%m-%d %H:%M\"), Result=case(fg_status=\"registered\",\"Blocked\", fg_status=\"failed\",\"Block failed\", true(),\"Needs check\"), Grade_bar=case(severity=\"critical\",\"■ ■ ■ ■   CRITICAL\",severity=\"high\",\"■ ■ ■ □   HIGH\",severity=\"watch\",\"■ ■ □ □   WATCH\",severity=\"info\",\"■ □ □ □   INFO\",true(),upper(severity)) | table match_ip Direction Reason Time Result Grade_bar | rename match_ip AS IP, Grade_bar AS \"Block grade\""
+            },
+            "type": "ds.chain"
+        },
+        "ds_last": {
+            "name": "ds_last",
+            "options": {
+                "extend": "ds_base",
+                "query": "| search source=\"ti_autoblock_alert\" | stats max(run_time) AS v | eval v=if(isnull(v),\"No record\",substr(v,6,11))"
+            },
+            "type": "ds.chain"
+        },
+        "ds_new": {
+            "name": "ds_new",
+            "options": {
+                "extend": "ds_base",
+                "query": "| search source=\"ti_autoblock_fg\" fg_status=\"registered\" | sort 0 _time | streamstats dc(match_ip) AS v | timechart span=1h max(v) AS v | filldown v | fillnull value=0 v | appendpipe [stats count | where count=0 | eval v=0 | fields v]"
+            },
+            "type": "ds.chain"
+        },
+        "ds_ratio": {
+            "name": "ds_ratio",
+            "options": {
+                "extend": "ds_base",
+                "query": "| search source=\"ti_autoblock_alert\" | dedup ti_candidate_key | stats count(eval(decision=\"auto_block\")) AS a count AS t | eval v=if(t=0,0,round(a*100/t)) | fields v"
+            },
+            "type": "ds.chain"
+        },
+        "ds_status": {
+            "name": "prep",
+            "options": {
+                "enableSmartSources": true,
+                "query": "| makeresults | eval k=1 | fields k\n``` Q1. Does the TI Feed app read traffic logs and get IPs from them (last 15 min, 1000 events) ```\n| join type=left k [ search `cip_ti_traffic_all` earliest=-15m latest=now | head 1000 | `cip_ti_normalize`\n    | eval has_ip=if(isnotnull(srcip) AND srcip!=\"\" AND isnotnull(dstip) AND dstip!=\"\",1,0)\n    | stats count AS ti_n sum(has_ip) AS ip_n values(index) AS ti_idx values(sourcetype) AS ti_st | eval k=1 ]\n``` Q2. Does auto-block get detection logs and read them as detection logs (any firewall)\n    a: logs read in addition to the TI traffic logs (24h, 200 events)  b: all of the last 15 min (for firewalls that mix traffic and detection) ```\n| join type=left k [ search `cip_ab_logs` NOT (`cip_ti_traffic_all`) earliest=-24h latest=now | head 200\n    | `cip_ab_normalize` | where ab_is_traffic=0\n    | eval fw=case(like(sourcetype,\"pan:%\"),\"Palo Alto\", type=\"utm\",\"FortiGate\", true(),null()), pair=index.\" / \".sourcetype\n    | stats count AS th_n values(fw) AS fw values(sourcetype) AS th_st values(pair) AS th_loc | eval k=1 ]\n``` Firewall product chosen in the TI app setup (fw_vendor) ```\n| join type=left k [| rest /servicesNS/-/TA-cip-ti-feed/configs/conf-cip_ti_feed splunk_server=local\n    | search title=\"settings\" | head 1 | fields fw_vendor | eval k=1 ]\n| join type=left k [ search `cip_ab_logs` earliest=-15m latest=now\n    | `cip_ab_normalize` | where ab_is_traffic=0 | head 1\n    | stats count AS th2_n | eval k=1 ]\n| fillnull value=0 ti_n ip_n th_n th2_n\n| eval th=th_n+th2_n,\n       state=case(ti_n=0,\"ti\", ip_n=0,\"unsupported\", th>0,\"ok\", true(),\"setup\"),\n       v=lower(trim(fw_vendor)),\n       vname=case(isnull(v) OR v=\"\",null(),\n                  match(v,\"forti\"),\"FortiGate\", match(v,\"palo|^pan\"),\"Palo Alto\", match(v,\"ftd|firepower\"),\"Cisco FTD\",\n                  match(v,\"cisco|asa\"),\"Cisco ASA\", match(v,\"check.?point|^cp\"),\"Check Point\", match(v,\"sophos\"),\"Sophos\",\n                  match(v,\"juniper|srx\"),\"Juniper SRX\", match(v,\"sonic\"),\"SonicWall\", match(v,\"secui\"),\"SECUI\", match(v,\"axgate\"),\"AXGATE\",\n                  match(v,\"other|custom|something|generic\"),null(),\n                  true(),fw_vendor),\n       fw=case(isnotnull(vname), vname,\n               isnotnull(fw) AND mvcount(fw)>0, mvjoin(fw,\" · \"),\n               th>0 AND isnotnull(th_st), \"Name unknown (using detection logs \".mvjoin(th_st,\", \").\")\",\n               true(),\"Unknown yet\"),\n       loc=if(ti_n>0, mvjoin(ti_idx,\", \").\" / \".mvjoin(ti_st,\", \"), \"Not found\"),\n       th_loc=if(isnotnull(th_loc), mvjoin(th_loc,\", \"), null()),\n       loc=if(isnotnull(th_loc) AND th_loc!=loc, \"Traffic logs \".loc.\"   ·   Detection logs \".th_loc, loc),\n       tech=if(ti_n>0, \"Index :  \".mvjoin(ti_idx,\", \").\"  ·  Sourcetype :  \".mvjoin(ti_st,\", \"), \"No traffic logs read by the TI Feed app in the last 15 minutes\"),\n       title=case(state=\"ok\",\"✅ Auto-block is ready\",\n                  state=\"setup\",\"⚠️ Detection log setup needed\",\n                  state=\"ti\",\"❌ TI Feed setup needed first\",\n                  true(),\"❌ Cannot read firewall logs\"),\n       desc=case(state=\"ok\",\"Firewall logs are being read normally, so auto-block can be used.\",\n                 state=\"setup\",\"Traffic logs are being read, but attack, malware file and risky site detection logs are not read yet. (This can also show when there were no detections in the last 24 hours.)\",\n                 state=\"ti\",\"The TI Feed app cannot read firewall traffic logs, so auto-block cannot be set up.\",\n                 true(),\"Traffic logs were found, but source and destination IPs cannot be read, so TI Feed and auto-block cannot be used.\"),\n       next=case(state=\"ok\",\"No more setup is needed.\",\n                 state=\"setup\",\"Find where the detection logs are and follow the 'Other firewalls' steps in the guide.\",\n                 state=\"ti\",\"Finish the firewall log location in the TI Feed app setup first.\",\n                 true(),\"Ask AI Spera whether the TI Feed app supports this firewall.\"),\n       btn=case(state=\"ok\",\"Check the final status in the Health tab  →\",\n                state=\"setup\",\"Below: ▶ Find logs for auto-block  ↓\",\n                state=\"ti\",\"TI Feed app  →  Set up  →  Check the log location\",\n                true(),\"Contact AI Spera  →\")\n| table state title desc fw loc tech next btn",
+                "queryParameters": {
+                    "earliest": "-24h",
+                    "latest": "now"
+                }
+            },
+            "type": "ds.search"
+        },
+        "ds_trend": {
+            "name": "ds_trend",
+            "options": {
+                "extend": "ds_base",
+                "query": "| where source=\"ti_autoblock_alert\" | bin _time span=1d | eval ab=if(decision=\"auto_block\",1,0) | stats max(ab) AS ab first(severity) AS severity first(match_ip) AS match_ip BY _time ti_candidate_key | timechart span=1d dc(eval(if(ab=1,match_ip,null()))) AS \"Auto-block\" dc(eval(if(severity=\"critical\" AND ab=0,ti_candidate_key,null()))) AS \"Critical candidates\" dc(eval(if(severity=\"high\" AND ab=0,ti_candidate_key,null()))) AS \"High candidates\""
+            },
+            "type": "ds.chain"
+        },
+        "ds_x_detail": {
+            "options": {
+                "extend": "ds_x_find",
+                "query": "| where like(\"$show_find$\",\"▶%\") AND loc=\"$x_loc$\" | head 1 | eval k1=\"Attack (IPS)\", j1=if(used=1, case(a_atk>0,\"✅ Meets condition\", n_atk>0,\"ℹ️ Below condition\", true(),\"ℹ️ No recent detection\"), case(ord=1 AND c_atk>0,\"✅ Confirmed\", atk+c_atk>0,\"⚠️ Needs check\", true(),\"— None\")), d1=if(used=1, case(a_atk>0,\"There are \".a_atk.\" attack detection records that meet the auto-block condition (IPS severity critical or high).\", n_atk>0,\"There are \".n_atk.\" attack detection (IPS) records, but none meet the auto-block condition (IPS severity critical or high).\", true(),\"No attack detection (IPS) records in the last 4 hours. This is not a problem.\"), case(ord=1 AND c_atk>0,\"Found \".c_atk.\" attack detection records.\", atk+c_atk>0,\"No clear attack detection records found. \".if(atk>=1000,\"1,000+\",atk).\" records look attack-related, so please check them yourself.\", true(),\"No related records found.\")), rep1=if(used=1, coalesce(q_atk,o_atk), if(ord=1, coalesce(s_atk,w_atk), coalesce(w_atk,s_atk))), m1=if(used=1, case(a_atk>0,\"▶ View \".a_atk.\" records that meet the condition\", n_atk>0,\"▶ View \".n_atk.\" attack detection (IPS) records\", true(),null()), case(ord=1 AND c_atk>0,\"▶ View all \".c_atk.\" detection records\", atk+c_atk>0,\"▶ View related records (latest 20)\", true(),null())) | eval k2=\"Malware file\", j2=if(used=1, case(a_mal>0,\"✅ Meets condition\", n_mal>0,\"ℹ️ Below condition\", true(),\"ℹ️ No recent detection\"), case(ord=1 AND c_mal>0,\"✅ Confirmed\", mal+c_mal>0,\"⚠️ Needs check\", true(),\"— None\")), d2=if(used=1, case(a_mal>0,\"There are \".a_mal.\" malware file records that meet the auto-block condition (malware name present).\", n_mal>0,\"There are \".n_mal.\" malware detection (antivirus) records, but none meet the auto-block condition (malware name present).\", true(),\"No malware detection (antivirus) records in the last 4 hours. This is not a problem.\"), case(ord=1 AND c_mal>0,\"Found \".c_mal.\" malware file records.\", mal+c_mal>0,\"No clear malware detection records found. \".if(mal>=1000,\"1,000+\",mal).\" records look malware-related, so please check them yourself.\", true(),\"No related records found.\")), rep2=if(used=1, coalesce(q_mal,o_mal), if(ord=1, coalesce(s_mal,w_mal), coalesce(w_mal,s_mal))), m2=if(used=1, case(a_mal>0,\"▶ View \".a_mal.\" records that meet the condition\", n_mal>0,\"▶ View \".n_mal.\" malware detection (antivirus) records\", true(),null()), case(ord=1 AND c_mal>0,\"▶ View all \".c_mal.\" detection records\", mal+c_mal>0,\"▶ View related records (latest 20)\", true(),null())) | eval k3=\"Risky site\", j3=if(used=1, case(a_web>0,\"✅ Meets condition\", n_web>0,\"ℹ️ Below condition\", true(),\"ℹ️ No recent detection\"), case(ord=1 AND c_web>0,\"✅ Confirmed\", web+c_web>0,\"⚠️ Needs check\", true(),\"— None\")), d3=if(used=1, case(a_web>0,\"There are \".a_web.\" risky site records that meet the auto-block condition (phishing or malicious site category).\", n_web>0,\"There are \".n_web.\" web filter records, but none meet the auto-block condition (phishing or malicious site category).\", true(),\"No web filter records in the last 4 hours. This is not a problem.\"), case(ord=1 AND c_web>0,\"Found \".c_web.\" risky site records.\", web+c_web>0,\"Found \".if(web>=1000,\"1,000+\",web).\" records that look related to risky sites. Please check whether they are real risky site detection logs.\", true(),\"No related records found.\")), rep3=if(used=1, coalesce(q_web,o_web), if(ord=1, coalesce(s_web,w_web), coalesce(w_web,s_web))), m3=if(used=1, case(a_web>0,\"▶ View \".a_web.\" records that meet the condition\", n_web>0,\"▶ View \".n_web.\" web filter records\", true(),null()), case(ord=1 AND c_web>0,\"▶ View all \".c_web.\" detection records\", web+c_web>0,\"▶ View related records (latest 20)\", true(),null())) | eval row=mvappend(\"1\",\"2\",\"3\") | mvexpand row | eval Item=case(row=\"1\",k1,row=\"2\",k2,true(),k3), Verdict=case(row=\"1\",j1,row=\"2\",j2,true(),j3), Description=case(row=\"1\",d1,row=\"2\",d2,true(),d3), rep=case(row=\"1\",rep1,row=\"2\",rep2,true(),rep3), View=case(row=\"1\",m1,row=\"2\",m2,true(),m3) | rex field=rep \"(?i)\\bsubtype\\\"?\\s*[=:]\\s*\\\"?(?<r_type>[^\\\",\\s}]+)\" | rex field=rep \"(?i)\\b(?:level|severity|priority)\\\"?\\s*[=:]\\s*\\\"?(?<r_level>[^\\\",\\s}]+)\" | rex field=rep \"(?i)\\baction\\\"?\\s*[=:]\\s*\\\"?(?<r_action>[^\\\",\\s}]+)\" | rex field=rep \"(?i)\\b(?:attack|virus|catdesc|threat_?name|ThreatName)\\\"?\\s*[=:]\\s*\\\"(?<r_name>[^\\\"]+)\\\"\" | rex field=rep \"(?i)\\bcat\\\"?\\s*[=:]\\s*\\\"?(?<r_cat>\\d+)\" | eval r_name=case(r_cat=\"26\",\"Malicious Websites\", r_cat=\"61\",\"Phishing\", isnotnull(r_cat) AND NOT match(r_name,\"^[ -~]+$\"),\"Category \".r_cat, true(),r_name) | eval Sample=if(isnull(rep),\"-\", \"Type \".coalesce(r_type,\"-\").\"  ·  Severity \".coalesce(r_level,\"-\").\"  ·  Action \".coalesce(r_action,\"-\").if(isnotnull(r_name),\"  ·  Name \".r_name,\"\")) | table Item Verdict Description Sample View | rename Sample AS \"Sample record (key fields)\", View AS \"View all (click)\""
+            },
+            "type": "ds.chain"
+        },
+        "ds_x_find": {
+            "name": "Find logs (location)",
+            "options": {
+                "query": "index=* earliest=-4h latest=now [| makeresults | eval search=if(like(\"$show_find$\",\"▶%\"),\"*\",\"cip_ab_find_closed\") | fields search] (attack OR intrusion OR exploit OR ips OR ids OR signature OR virus OR malware OR trojan OR antivirus OR phishing OR url OR category OR threat OR webfilter)\n| eval k_atk=if(match(_raw,\"(?i)attack|intrusion|exploit|signature|(^|[^a-z])(ips|ids)([^a-z]|$)\"),1,0),\n       k_mal=if(match(_raw,\"(?i)virus|malware|trojan|ransom\"),1,0),\n       k_web=if(match(_raw,\"(?i)phish|(^|[^a-z])(url|dns)([^a-z]|$)|categor|catdesc|webfilter\"),1,0),\n       c_atk=if(match(_raw,\"(?i)attack[ ]*[=:]|\\\"attack[a-z_]*\\\"[ ]*:|intrusion|exploit|,vulnerability,\"),1,0),\n       c_mal=if(match(_raw,\"(?i)virus[ ]*[=:]|\\\"virus[a-z_]*\\\"[ ]*:|malware[ ]*[=:]|,virus,|,wildfire-virus,\"),1,0),\n       c_web=if(match(_raw,\"(?i)webfilter|,url,|categor|catdesc\") AND match(_raw,\"(?i)phish|malicious|malware|유해|악성|피싱\") AND match(_raw,\"(?i)block|deny|drop|reset\"),1,0)\n| eval rel_atk=max(k_atk,c_atk), rel_mal=max(k_mal,c_mal), rel_web=max(k_web,c_web),\n       s_atk=if(c_atk=1,_raw,null()), w_atk=if(rel_atk=1,_raw,null()), s_mal=if(c_mal=1,_raw,null()), w_mal=if(rel_mal=1,_raw,null()),\n       s_web=if(c_web=1,_raw,null()), w_web=if(rel_web=1,_raw,null())\n| stats sum(rel_atk) AS atk sum(rel_mal) AS mal sum(rel_web) AS web sum(c_atk) AS c_atk sum(c_mal) AS c_mal sum(c_web) AS c_web\n        first(s_atk) AS s_atk first(w_atk) AS w_atk first(s_mal) AS s_mal first(w_mal) AS w_mal first(s_web) AS s_web first(w_web) AS w_web BY index sourcetype\n| append [ search `cip_ti_traffic_all` earliest=-15m latest=now | stats count AS ti_n BY index sourcetype ]\n``` Detection logs that auto-block really uses: count by type (n_), count meeting the auto-block condition (a_), sample record ```\n| append [ search `cip_ab_logs` NOT (`cip_ti_traffic_all`) [| makeresults | eval search=if(like(\"$show_find$\",\"▶%\"),\"*\",\"cip_ab_find_closed\") | fields search] earliest=-4h latest=now | `cip_ab_normalize` | where ab_is_traffic=0\n    | eval ka=case(ab_kind=\"ips\",\"atk\", ab_kind=\"virus\",\"mal\", ab_kind=\"webfilter\",\"web\", true(),\"etc\"),\n           q_atk=if(ab_ips=1,_raw,null()), q_mal=if(ab_av=1,_raw,null()), q_web=if(ab_web=1,_raw,null()),\n           o_atk=if(ka=\"atk\",_raw,null()), o_mal=if(ka=\"mal\",_raw,null()), o_web=if(ka=\"web\",_raw,null())\n    | stats count AS ab_n sum(eval(if(ka=\"atk\",1,0))) AS n_atk sum(eval(if(ka=\"mal\",1,0))) AS n_mal sum(eval(if(ka=\"web\",1,0))) AS n_web\n            sum(ab_ips) AS a_atk sum(ab_av) AS a_mal sum(ab_web) AS a_web\n            first(q_atk) AS q_atk first(q_mal) AS q_mal first(q_web) AS q_web first(o_atk) AS o_atk first(o_mal) AS o_mal first(o_web) AS o_web BY index sourcetype ]\n| stats sum(ti_n) AS ti_n sum(atk) AS atk sum(mal) AS mal sum(web) AS web sum(c_atk) AS c_atk sum(c_mal) AS c_mal sum(c_web) AS c_web\n        sum(ab_n) AS ab_n sum(n_atk) AS n_atk sum(n_mal) AS n_mal sum(n_web) AS n_web sum(a_atk) AS a_atk sum(a_mal) AS a_mal sum(a_web) AS a_web\n        first(s_atk) AS s_atk first(w_atk) AS w_atk first(s_mal) AS s_mal first(w_mal) AS w_mal first(s_web) AS s_web first(w_web) AS w_web\n        first(q_atk) AS q_atk first(q_mal) AS q_mal first(q_web) AS q_web first(o_atk) AS o_atk first(o_mal) AS o_mal first(o_web) AS o_web BY index sourcetype\n| search NOT index=summary NOT index=`cip_ti_index`\n| eventstats sum(ti_n) AS idx_ti BY index\n| fillnull value=0 ti_n atk mal web c_atk c_mal c_web ab_n n_atk n_mal n_web a_atk a_mal a_web\n| where atk+mal+web+ti_n+ab_n>0\n| eval used=if(ab_n>0,1,0), same_idx=if(coalesce(idx_ti,0)>0,1,0), strong=c_atk+c_mal+c_web, words=atk+mal+web, loc=index.\" / \".sourcetype,\n       ord=case(used=1,0, same_idx=1 AND strong>0,1, same_idx=1 AND words>0,2, strong>0,3, ti_n>0,4, true(),5)\n| sort 0 ord - strong - words",
+                "queryParameters": {
+                    "earliest": "-24h",
+                    "latest": "now"
+                }
+            },
+            "type": "ds.search"
+        },
+        "ds_x_list": {
+            "options": {
+                "query": "search `cip_ab_logs` NOT (`cip_ti_traffic_all`) [| makeresults | eval x=split(\"$x_loc$\",\" / \"), index=mvindex(x,0), sourcetype=mvindex(x,1) | fields index sourcetype] [| makeresults | eval search=if(like(\"$x_used$\",\"%In use by auto-block%\"),\"*\",\"cip_ab_skip\") | fields search] [| makeresults | eval search=case(like(\"$x_kind$\",\"Attack%\"),\"(ips OR vulnerability OR attack OR intrusion OR exploit)\", like(\"$x_kind$\",\"Malware%\"),\"(virus OR malware OR wildfire OR antivirus)\", like(\"$x_kind$\",\"Risky%\"),\"(webfilter OR url OR phishing OR category)\", true(),\"cip_ab_none\") | fields search] earliest=-4h@m latest=@m | `cip_ab_normalize` | where ab_is_traffic=0 | eval kind=case(like(\"$x_kind$\",\"Attack%\"),\"atk\", like(\"$x_kind$\",\"Malware%\"),\"mal\", like(\"$x_kind$\",\"Risky%\"),\"web\", true(),\"none\"), ak=case(ab_kind=\"ips\",\"atk\", ab_kind=\"virus\",\"mal\", ab_kind=\"webfilter\",\"web\", true(),\"etc\"), sure=case(kind=\"atk\",ab_ips, kind=\"mal\",ab_av, kind=\"web\",ab_web, true(),0), isA=1 | where ak=kind | where sure=1 | head 20 | append [ search `cip_ab_logs` NOT (`cip_ti_traffic_all`) [| makeresults | eval x=split(\"$x_loc$\",\" / \"), index=mvindex(x,0), sourcetype=mvindex(x,1) | fields index sourcetype] [| makeresults | eval search=if(like(\"$x_used$\",\"%In use by auto-block%\"),\"*\",\"cip_ab_skip\") | fields search] [| makeresults | eval search=case(like(\"$x_kind$\",\"Attack%\"),\"(ips OR vulnerability OR attack OR intrusion OR exploit)\", like(\"$x_kind$\",\"Malware%\"),\"(virus OR malware OR wildfire OR antivirus)\", like(\"$x_kind$\",\"Risky%\"),\"(webfilter OR url OR phishing OR category)\", true(),\"cip_ab_none\") | fields search] earliest=-4h@m latest=@m | `cip_ab_normalize` | where ab_is_traffic=0 | eval kind=case(like(\"$x_kind$\",\"Attack%\"),\"atk\", like(\"$x_kind$\",\"Malware%\"),\"mal\", like(\"$x_kind$\",\"Risky%\"),\"web\", true(),\"none\"), ak=case(ab_kind=\"ips\",\"atk\", ab_kind=\"virus\",\"mal\", ab_kind=\"webfilter\",\"web\", true(),\"etc\"), sure=case(kind=\"atk\",ab_ips, kind=\"mal\",ab_av, kind=\"web\",ab_web, true(),0), isA=1 | where ak=kind | where sure=0 | head 20 ] | append [ search [| makeresults | eval x=split(\"$x_loc$\",\" / \"), index=mvindex(x,0), sourcetype=mvindex(x,1) | fields index sourcetype] [| makeresults | eval search=if(like(\"$x_used$\",\"%In use by auto-block%\"),\"cip_ab_skip\",\"*\") | fields search] [| makeresults | eval search=case(like(\"$x_kind$\",\"Attack%\"),\"(attack OR intrusion OR exploit OR ips OR ids OR signature OR vulnerability)\", like(\"$x_kind$\",\"Malware%\"),\"(virus OR malware OR trojan OR ransom OR antivirus OR wildfire)\", like(\"$x_kind$\",\"Risky%\"),\"(phishing OR url OR dns OR category OR catdesc OR webfilter)\", true(),\"cip_ab_none\") | fields search] earliest=-4h@m latest=@m | eval k_atk=if(match(_raw,\"(?i)attack|intrusion|exploit|signature|(^|[^a-z])(ips|ids)([^a-z]|$)\"),1,0),        k_mal=if(match(_raw,\"(?i)virus|malware|trojan|ransom\"),1,0),        k_web=if(match(_raw,\"(?i)phish|(^|[^a-z])(url|dns)([^a-z]|$)|categor|catdesc|webfilter\"),1,0),        c_atk=if(match(_raw,\"(?i)attack[ ]*[=:]|\\\"attack[a-z_]*\\\"[ ]*:|intrusion|exploit|,vulnerability,\"),1,0),        c_mal=if(match(_raw,\"(?i)virus[ ]*[=:]|\\\"virus[a-z_]*\\\"[ ]*:|malware[ ]*[=:]|,virus,|,wildfire-virus,\"),1,0),        c_web=if(match(_raw,\"(?i)webfilter|,url,|categor|catdesc\") AND match(_raw,\"(?i)phish|malicious|malware|유해|악성|피싱\") AND match(_raw,\"(?i)block|deny|drop|reset\"),1,0) | eval kind=case(like(\"$x_kind$\",\"Attack%\"),\"atk\", like(\"$x_kind$\",\"Malware%\"),\"mal\", like(\"$x_kind$\",\"Risky%\"),\"web\", true(),\"none\"), rel=case(kind=\"atk\",max(k_atk,c_atk), kind=\"mal\",max(k_mal,c_mal), kind=\"web\",max(k_web,c_web), true(),0), sure=case(kind=\"atk\",c_atk, kind=\"mal\",c_mal, kind=\"web\",c_web, true(),0), isA=0 | where rel=1 | where sure=1 | head 20 ] | append [ search [| makeresults | eval x=split(\"$x_loc$\",\" / \"), index=mvindex(x,0), sourcetype=mvindex(x,1) | fields index sourcetype] [| makeresults | eval search=if(like(\"$x_used$\",\"%In use by auto-block%\"),\"cip_ab_skip\",\"*\") | fields search] [| makeresults | eval search=case(like(\"$x_kind$\",\"Attack%\"),\"(attack OR intrusion OR exploit OR ips OR ids OR signature OR vulnerability)\", like(\"$x_kind$\",\"Malware%\"),\"(virus OR malware OR trojan OR ransom OR antivirus OR wildfire)\", like(\"$x_kind$\",\"Risky%\"),\"(phishing OR url OR dns OR category OR catdesc OR webfilter)\", true(),\"cip_ab_none\") | fields search] earliest=-4h@m latest=@m | eval k_atk=if(match(_raw,\"(?i)attack|intrusion|exploit|signature|(^|[^a-z])(ips|ids)([^a-z]|$)\"),1,0),        k_mal=if(match(_raw,\"(?i)virus|malware|trojan|ransom\"),1,0),        k_web=if(match(_raw,\"(?i)phish|(^|[^a-z])(url|dns)([^a-z]|$)|categor|catdesc|webfilter\"),1,0),        c_atk=if(match(_raw,\"(?i)attack[ ]*[=:]|\\\"attack[a-z_]*\\\"[ ]*:|intrusion|exploit|,vulnerability,\"),1,0),        c_mal=if(match(_raw,\"(?i)virus[ ]*[=:]|\\\"virus[a-z_]*\\\"[ ]*:|malware[ ]*[=:]|,virus,|,wildfire-virus,\"),1,0),        c_web=if(match(_raw,\"(?i)webfilter|,url,|categor|catdesc\") AND match(_raw,\"(?i)phish|malicious|malware|유해|악성|피싱\") AND match(_raw,\"(?i)block|deny|drop|reset\"),1,0) | eval kind=case(like(\"$x_kind$\",\"Attack%\"),\"atk\", like(\"$x_kind$\",\"Malware%\"),\"mal\", like(\"$x_kind$\",\"Risky%\"),\"web\", true(),\"none\"), rel=case(kind=\"atk\",max(k_atk,c_atk), kind=\"mal\",max(k_mal,c_mal), kind=\"web\",max(k_web,c_web), true(),0), sure=case(kind=\"atk\",c_atk, kind=\"mal\",c_mal, kind=\"web\",c_web, true(),0), isA=0 | where rel=1 | where sure=0 | head 20 ] | sort 0 - sure - _time | head 20 | streamstats count AS rn | rex field=_raw \"(?i)\\bsubtype\\\"?\\s*[=:]\\s*\\\"?(?<r_type>[^\\\",\\s}]+)\" | rex field=_raw \"(?i)\\b(?:level|severity|priority)\\\"?\\s*[=:]\\s*\\\"?(?<r_level>[^\\\",\\s}]+)\" | rex field=_raw \"(?i)\\baction\\\"?\\s*[=:]\\s*\\\"?(?<r_action>[^\\\",\\s}]+)\" | rex field=_raw \"(?i)\\b(?:attack|virus|catdesc|threat_?name|ThreatName)\\\"?\\s*[=:]\\s*\\\"(?<r_name>[^\\\"]+)\\\"\" | rex field=_raw \"(?i)\\bcat\\\"?\\s*[=:]\\s*\\\"?(?<r_cat>\\d+)\" | eval r_name=case(r_cat=\"26\",\"Malicious Websites\", r_cat=\"61\",\"Phishing\", isnotnull(r_cat) AND NOT match(r_name,\"^[ -~]+$\"),\"Category \".r_cat, true(),r_name) | eval Time=strftime(_time,\"%m-%d %H:%M:%S\"), Class=case(isA=1 AND sure=1,\"Meets auto-block condition\", isA=1,\"Below condition\", sure=1,\"Looks like a detection log\", true(),\"Related words only\"), Type=coalesce(r_type,\"-\"), Severity=coalesce(r_level,\"-\"), Name=coalesce(r_name,\"-\"), Action=coalesce(r_action,\"-\") | rename rn AS No | table No Time Class Type Severity Name Action",
+                "queryParameters": {
+                    "earliest": "-24h",
+                    "latest": "now"
+                }
+            },
+            "type": "ds.search"
+        },
+        "ds_x_main": {
+            "options": {
+                "extend": "ds_x_find",
+                "query": "| where like(\"$show_find$\",\"▶%\") | eval Status=case(ord=0,\"✅ In use by auto-block\", ord=1,\"✅ Detection logs found\", ord=2 OR ord=3,\"⚠️ Check manually\", ord=4,\"ℹ️ No recent detection\", true(),\"— Not for auto-block\"), f=if(ord=0, if(a_atk+a_mal+a_web>0, \"Records meeting the auto-block condition: \".mvjoin(mvappend(if(a_atk>0,\"Attack \".a_atk,null()),if(a_mal>0,\"Malware file \".a_mal,null()),if(a_web>0,\"Risky site \".a_web,null())),\" · \"), \"No detections meeting the auto-block condition in the last 4 hours\"), mvjoin(mvappend(if(ord=1 AND c_atk>0,\"Attack\",if(atk>0,\"Attack-related\",null())), if(ord=1 AND c_mal>0,\"Malware file\",if(mal>0,\"Malware-related\",null())), if(ord=1 AND c_web>0,\"Risky site\",if(web>0,\"Web-related\",null()))),\" · \")) | eval f=if(ord=4,\"No detection in the last 4 hours\",f) | eval Todo=case(ord=0,\"In use now (nothing to do)\", ord=1 AND \"$prep:result.state$\"=\"ok\",\"In use now\", ord=1,\"Use this location in the setup\", ord=2,\"Check the log content\", ord=3,\"Check the log content (add it to the setup only if it fits)\", ord=4,\"Nothing to do\", true(),\"Not used\") | table Status loc f Todo | rename loc AS \"Log location\", f AS \"What was found\", Todo AS \"To do\""
+            },
+            "type": "ds.chain"
+        },
+        "ds_x_raw": {
+            "options": {
+                "query": "search `cip_ab_logs` NOT (`cip_ti_traffic_all`) [| makeresults | eval x=split(\"$x_loc$\",\" / \"), index=mvindex(x,0), sourcetype=mvindex(x,1) | fields index sourcetype] [| makeresults | eval search=if(like(\"$x_used$\",\"%In use by auto-block%\"),\"*\",\"cip_ab_skip\") | fields search] [| makeresults | eval search=case(like(\"$x_kind$\",\"Attack%\"),\"(ips OR vulnerability OR attack OR intrusion OR exploit)\", like(\"$x_kind$\",\"Malware%\"),\"(virus OR malware OR wildfire OR antivirus)\", like(\"$x_kind$\",\"Risky%\"),\"(webfilter OR url OR phishing OR category)\", true(),\"cip_ab_none\") | fields search] earliest=-4h@m latest=@m | `cip_ab_normalize` | where ab_is_traffic=0 | eval kind=case(like(\"$x_kind$\",\"Attack%\"),\"atk\", like(\"$x_kind$\",\"Malware%\"),\"mal\", like(\"$x_kind$\",\"Risky%\"),\"web\", true(),\"none\"), ak=case(ab_kind=\"ips\",\"atk\", ab_kind=\"virus\",\"mal\", ab_kind=\"webfilter\",\"web\", true(),\"etc\"), sure=case(kind=\"atk\",ab_ips, kind=\"mal\",ab_av, kind=\"web\",ab_web, true(),0), isA=1 | where ak=kind | where sure=1 | head 20 | append [ search `cip_ab_logs` NOT (`cip_ti_traffic_all`) [| makeresults | eval x=split(\"$x_loc$\",\" / \"), index=mvindex(x,0), sourcetype=mvindex(x,1) | fields index sourcetype] [| makeresults | eval search=if(like(\"$x_used$\",\"%In use by auto-block%\"),\"*\",\"cip_ab_skip\") | fields search] [| makeresults | eval search=case(like(\"$x_kind$\",\"Attack%\"),\"(ips OR vulnerability OR attack OR intrusion OR exploit)\", like(\"$x_kind$\",\"Malware%\"),\"(virus OR malware OR wildfire OR antivirus)\", like(\"$x_kind$\",\"Risky%\"),\"(webfilter OR url OR phishing OR category)\", true(),\"cip_ab_none\") | fields search] earliest=-4h@m latest=@m | `cip_ab_normalize` | where ab_is_traffic=0 | eval kind=case(like(\"$x_kind$\",\"Attack%\"),\"atk\", like(\"$x_kind$\",\"Malware%\"),\"mal\", like(\"$x_kind$\",\"Risky%\"),\"web\", true(),\"none\"), ak=case(ab_kind=\"ips\",\"atk\", ab_kind=\"virus\",\"mal\", ab_kind=\"webfilter\",\"web\", true(),\"etc\"), sure=case(kind=\"atk\",ab_ips, kind=\"mal\",ab_av, kind=\"web\",ab_web, true(),0), isA=1 | where ak=kind | where sure=0 | head 20 ] | append [ search [| makeresults | eval x=split(\"$x_loc$\",\" / \"), index=mvindex(x,0), sourcetype=mvindex(x,1) | fields index sourcetype] [| makeresults | eval search=if(like(\"$x_used$\",\"%In use by auto-block%\"),\"cip_ab_skip\",\"*\") | fields search] [| makeresults | eval search=case(like(\"$x_kind$\",\"Attack%\"),\"(attack OR intrusion OR exploit OR ips OR ids OR signature OR vulnerability)\", like(\"$x_kind$\",\"Malware%\"),\"(virus OR malware OR trojan OR ransom OR antivirus OR wildfire)\", like(\"$x_kind$\",\"Risky%\"),\"(phishing OR url OR dns OR category OR catdesc OR webfilter)\", true(),\"cip_ab_none\") | fields search] earliest=-4h@m latest=@m | eval k_atk=if(match(_raw,\"(?i)attack|intrusion|exploit|signature|(^|[^a-z])(ips|ids)([^a-z]|$)\"),1,0),        k_mal=if(match(_raw,\"(?i)virus|malware|trojan|ransom\"),1,0),        k_web=if(match(_raw,\"(?i)phish|(^|[^a-z])(url|dns)([^a-z]|$)|categor|catdesc|webfilter\"),1,0),        c_atk=if(match(_raw,\"(?i)attack[ ]*[=:]|\\\"attack[a-z_]*\\\"[ ]*:|intrusion|exploit|,vulnerability,\"),1,0),        c_mal=if(match(_raw,\"(?i)virus[ ]*[=:]|\\\"virus[a-z_]*\\\"[ ]*:|malware[ ]*[=:]|,virus,|,wildfire-virus,\"),1,0),        c_web=if(match(_raw,\"(?i)webfilter|,url,|categor|catdesc\") AND match(_raw,\"(?i)phish|malicious|malware|유해|악성|피싱\") AND match(_raw,\"(?i)block|deny|drop|reset\"),1,0) | eval kind=case(like(\"$x_kind$\",\"Attack%\"),\"atk\", like(\"$x_kind$\",\"Malware%\"),\"mal\", like(\"$x_kind$\",\"Risky%\"),\"web\", true(),\"none\"), rel=case(kind=\"atk\",max(k_atk,c_atk), kind=\"mal\",max(k_mal,c_mal), kind=\"web\",max(k_web,c_web), true(),0), sure=case(kind=\"atk\",c_atk, kind=\"mal\",c_mal, kind=\"web\",c_web, true(),0), isA=0 | where rel=1 | where sure=1 | head 20 ] | append [ search [| makeresults | eval x=split(\"$x_loc$\",\" / \"), index=mvindex(x,0), sourcetype=mvindex(x,1) | fields index sourcetype] [| makeresults | eval search=if(like(\"$x_used$\",\"%In use by auto-block%\"),\"cip_ab_skip\",\"*\") | fields search] [| makeresults | eval search=case(like(\"$x_kind$\",\"Attack%\"),\"(attack OR intrusion OR exploit OR ips OR ids OR signature OR vulnerability)\", like(\"$x_kind$\",\"Malware%\"),\"(virus OR malware OR trojan OR ransom OR antivirus OR wildfire)\", like(\"$x_kind$\",\"Risky%\"),\"(phishing OR url OR dns OR category OR catdesc OR webfilter)\", true(),\"cip_ab_none\") | fields search] earliest=-4h@m latest=@m | eval k_atk=if(match(_raw,\"(?i)attack|intrusion|exploit|signature|(^|[^a-z])(ips|ids)([^a-z]|$)\"),1,0),        k_mal=if(match(_raw,\"(?i)virus|malware|trojan|ransom\"),1,0),        k_web=if(match(_raw,\"(?i)phish|(^|[^a-z])(url|dns)([^a-z]|$)|categor|catdesc|webfilter\"),1,0),        c_atk=if(match(_raw,\"(?i)attack[ ]*[=:]|\\\"attack[a-z_]*\\\"[ ]*:|intrusion|exploit|,vulnerability,\"),1,0),        c_mal=if(match(_raw,\"(?i)virus[ ]*[=:]|\\\"virus[a-z_]*\\\"[ ]*:|malware[ ]*[=:]|,virus,|,wildfire-virus,\"),1,0),        c_web=if(match(_raw,\"(?i)webfilter|,url,|categor|catdesc\") AND match(_raw,\"(?i)phish|malicious|malware|유해|악성|피싱\") AND match(_raw,\"(?i)block|deny|drop|reset\"),1,0) | eval kind=case(like(\"$x_kind$\",\"Attack%\"),\"atk\", like(\"$x_kind$\",\"Malware%\"),\"mal\", like(\"$x_kind$\",\"Risky%\"),\"web\", true(),\"none\"), rel=case(kind=\"atk\",max(k_atk,c_atk), kind=\"mal\",max(k_mal,c_mal), kind=\"web\",max(k_web,c_web), true(),0), sure=case(kind=\"atk\",c_atk, kind=\"mal\",c_mal, kind=\"web\",c_web, true(),0), isA=0 | where rel=1 | where sure=0 | head 20 ] | sort 0 - sure - _time | head 20 | streamstats count AS rn | where rn=tonumber(\"$x_n$\") | rex max_match=0 \"(?<kv>[A-Za-z_][\\w\\.]*\\\"?\\s*[=:]\\s*(\\\"[^\\\"]*\\\"|[^,\\s}]+))\" | eval kv=mvappend(\"Full raw=\".substr(_raw,1,2000), kv) | mvexpand kv | head 80 | rex field=kv \"^(?<k>[^=:\\\"]+)\\\"?\\s*[=:]\\s*\\\"?(?<v>.*?)\\\"?$\" | table k v | rename k AS Field, v AS Value",
+                "queryParameters": {
+                    "earliest": "-24h",
+                    "latest": "now"
+                }
+            },
+            "type": "ds.search"
+        }
+    },
+    "layout": {
+        "globalInputs": [
+            "input_time"
+        ],
+        "layoutDefinitions": {
+            "layout_1": {
+                "options": {
+                    "backgroundColor": "#1b1e47",
+                    "height": 1380,
+                    "width": 1440
+                },
+                "structure": [
+                    {
+                        "item": "md_title",
+                        "position": {
+                            "h": 50,
+                            "w": 1000,
+                            "x": 24,
+                            "y": 14
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "md_sub",
+                        "position": {
+                            "h": 26,
+                            "w": 1000,
+                            "x": 28,
+                            "y": 62
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "sv_last",
+                        "position": {
+                            "h": 80,
+                            "w": 200,
+                            "x": 1220,
+                            "y": 10
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "g_kpi",
+                        "position": {
+                            "h": 230,
+                            "w": 900,
+                            "x": 20,
+                            "y": 100
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "gt_kpi",
+                        "position": {
+                            "h": 30,
+                            "w": 864,
+                            "x": 38,
+                            "y": 110
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "t_k_new",
+                        "position": {
+                            "h": 172,
+                            "w": 276,
+                            "x": 36,
+                            "y": 144
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "viz_k_new",
+                        "position": {
+                            "h": 164,
+                            "w": 264,
+                            "x": 42,
+                            "y": 148
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "t_k_fail",
+                        "position": {
+                            "h": 172,
+                            "w": 276,
+                            "x": 328,
+                            "y": 144
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "k_fail",
+                        "position": {
+                            "h": 164,
+                            "w": 264,
+                            "x": 334,
+                            "y": 148
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "t_k_cand",
+                        "position": {
+                            "h": 172,
+                            "w": 276,
+                            "x": 620,
+                            "y": 144
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "k_cand",
+                        "position": {
+                            "h": 164,
+                            "w": 264,
+                            "x": 626,
+                            "y": 148
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "g_donut",
+                        "position": {
+                            "h": 230,
+                            "w": 480,
+                            "x": 930,
+                            "y": 100
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "gt_donut",
+                        "position": {
+                            "h": 30,
+                            "w": 444,
+                            "x": 960,
+                            "y": 110
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "viz_donut",
+                        "position": {
+                            "h": 180,
+                            "w": 178,
+                            "x": 950,
+                            "y": 130
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "sv_ratio",
+                        "position": {
+                            "h": 66,
+                            "w": 80,
+                            "x": 1000,
+                            "y": 190
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "lg0",
+                        "position": {
+                            "h": 14,
+                            "w": 14,
+                            "x": 1170,
+                            "y": 170
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "lgt0",
+                        "position": {
+                            "h": 20,
+                            "w": 210,
+                            "x": 1190,
+                            "y": 166
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "lg1",
+                        "position": {
+                            "h": 14,
+                            "w": 14,
+                            "x": 1170,
+                            "y": 204
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "lgt1",
+                        "position": {
+                            "h": 20,
+                            "w": 210,
+                            "x": 1190,
+                            "y": 201
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "lg2",
+                        "position": {
+                            "h": 14,
+                            "w": 14,
+                            "x": 1170,
+                            "y": 240
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "lgt2",
+                        "position": {
+                            "h": 20,
+                            "w": 210,
+                            "x": 1190,
+                            "y": 237
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "lg3",
+                        "position": {
+                            "h": 14,
+                            "w": 14,
+                            "x": 1170,
+                            "y": 276
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "lgt3",
+                        "position": {
+                            "h": 20,
+                            "w": 210,
+                            "x": 1190,
+                            "y": 274
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "g_trend",
+                        "position": {
+                            "h": 310,
+                            "w": 900,
+                            "x": 20,
+                            "y": 350
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "gt_trend",
+                        "position": {
+                            "h": 30,
+                            "w": 864,
+                            "x": 38,
+                            "y": 360
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "viz_trend",
+                        "position": {
+                            "h": 290,
+                            "w": 880,
+                            "x": 30,
+                            "y": 362
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "trend_y",
+                        "position": {
+                            "h": 22,
+                            "w": 80,
+                            "x": 36,
+                            "y": 384
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "g_grade",
+                        "position": {
+                            "h": 310,
+                            "w": 480,
+                            "x": 940,
+                            "y": 350
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "gt_grade",
+                        "position": {
+                            "h": 30,
+                            "w": 444,
+                            "x": 958,
+                            "y": 360
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "viz_grade",
+                        "position": {
+                            "h": 248,
+                            "w": 340,
+                            "x": 1010,
+                            "y": 404
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "grade_y",
+                        "position": {
+                            "h": 22,
+                            "w": 80,
+                            "x": 956,
+                            "y": 384
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "g_tbl_history",
+                        "position": {
+                            "h": 330,
+                            "w": 1400,
+                            "x": 20,
+                            "y": 680
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "gt_tbl_history",
+                        "position": {
+                            "h": 30,
+                            "w": 1364,
+                            "x": 38,
+                            "y": 690
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "tbl_history",
+                        "position": {
+                            "h": 274,
+                            "w": 1372,
+                            "x": 34,
+                            "y": 724
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "g_tbl_evidence",
+                        "position": {
+                            "h": 330,
+                            "w": 1400,
+                            "x": 20,
+                            "y": 1030
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "gt_tbl_evidence",
+                        "position": {
+                            "h": 30,
+                            "w": 1364,
+                            "x": 38,
+                            "y": 1040
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "tbl_evidence",
+                        "position": {
+                            "h": 274,
+                            "w": 1372,
+                            "x": 34,
+                            "y": 1074
+                        },
+                        "type": "block"
+                    }
+                ],
+                "type": "absolute"
+            },
+            "layout_2": {
+                "options": {
+                    "backgroundColor": "#1b1e47",
+                    "display": "fit-to-width",
+                    "height": 1440,
+                    "width": 1440
+                },
+                "structure": [
+                    {
+                        "item": "h_bg",
+                        "position": {
+                            "h": 1400,
+                            "w": 1400,
+                            "x": 20,
+                            "y": 20
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "h_title",
+                        "position": {
+                            "h": 30,
+                            "w": 1000,
+                            "x": 38,
+                            "y": 30
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "h_t1",
+                        "position": {
+                            "h": 170,
+                            "w": 380,
+                            "x": 332,
+                            "y": 70
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "h_state",
+                        "position": {
+                            "h": 162,
+                            "w": 368,
+                            "x": 340,
+                            "y": 77
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "h_t2",
+                        "position": {
+                            "h": 170,
+                            "w": 380,
+                            "x": 728,
+                            "y": 70
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "h_last",
+                        "position": {
+                            "h": 162,
+                            "w": 368,
+                            "x": 730,
+                            "y": 77
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "h_lg_ok",
+                        "position": {
+                            "h": 26,
+                            "w": 1364,
+                            "x": 38,
+                            "y": 260
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "h_lg_warn",
+                        "position": {
+                            "h": 26,
+                            "w": 1364,
+                            "x": 38,
+                            "y": 290
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "h_lg_bad",
+                        "position": {
+                            "h": 26,
+                            "w": 1364,
+                            "x": 38,
+                            "y": 320
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "h_lg_stop",
+                        "position": {
+                            "h": 26,
+                            "w": 1364,
+                            "x": 38,
+                            "y": 350
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "h_guide",
+                        "position": {
+                            "h": 400,
+                            "w": 1364,
+                            "x": 38,
+                            "y": 383
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "h_table",
+                        "position": {
+                            "h": 600,
+                            "w": 1364,
+                            "x": 38,
+                            "y": 800
+                        },
+                        "type": "block"
+                    }
+                ],
+                "type": "absolute"
+            },
+            "layout_3": {
+                "options": {
+                    "backgroundColor": "#1b1e47",
+                    "display": "fit-to-width",
+                    "height": 3080,
+                    "width": 1440
+                },
+                "structure": [
+                    {
+                        "item": "p_bg",
+                        "position": {
+                            "h": 3040,
+                            "w": 1400,
+                            "x": 20,
+                            "y": 20
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_title",
+                        "position": {
+                            "h": 70,
+                            "w": 1360,
+                            "x": 40,
+                            "y": 30
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_card_bg",
+                        "position": {
+                            "h": 420,
+                            "w": 1360,
+                            "x": 40,
+                            "y": 108
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_card_title",
+                        "position": {
+                            "h": 56,
+                            "w": 1312,
+                            "x": 64,
+                            "y": 118
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_card",
+                        "position": {
+                            "h": 56,
+                            "w": 1312,
+                            "x": 64,
+                            "y": 174
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_info_bg1",
+                        "position": {
+                            "h": 92,
+                            "w": 640,
+                            "x": 64,
+                            "y": 238
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_info_bg2",
+                        "position": {
+                            "h": 92,
+                            "w": 656,
+                            "x": 720,
+                            "y": 238
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_info_l1",
+                        "position": {
+                            "h": 30,
+                            "w": 608,
+                            "x": 80,
+                            "y": 244
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_info_v1",
+                        "position": {
+                            "h": 48,
+                            "w": 608,
+                            "x": 80,
+                            "y": 272
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_info_l2",
+                        "position": {
+                            "h": 30,
+                            "w": 624,
+                            "x": 736,
+                            "y": 244
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_info_v2",
+                        "position": {
+                            "h": 48,
+                            "w": 624,
+                            "x": 736,
+                            "y": 272
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_card_line",
+                        "position": {
+                            "h": 2,
+                            "w": 1312,
+                            "x": 64,
+                            "y": 346
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_next_label",
+                        "position": {
+                            "h": 30,
+                            "w": 1312,
+                            "x": 64,
+                            "y": 356
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_next",
+                        "position": {
+                            "h": 32,
+                            "w": 1312,
+                            "x": 64,
+                            "y": 384
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_btn_bg",
+                        "position": {
+                            "h": 44,
+                            "w": 460,
+                            "x": 64,
+                            "y": 422
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_btn",
+                        "position": {
+                            "h": 36,
+                            "w": 440,
+                            "x": 84,
+                            "y": 426
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_card_tech",
+                        "position": {
+                            "h": 34,
+                            "w": 1312,
+                            "x": 64,
+                            "y": 480
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_toggle",
+                        "position": {
+                            "h": 56,
+                            "w": 1368,
+                            "x": 36,
+                            "y": 544
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_close",
+                        "position": {
+                            "h": 56,
+                            "w": 1368,
+                            "x": 36,
+                            "y": 544
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_legend",
+                        "position": {
+                            "h": 250,
+                            "w": 1368,
+                            "x": 36,
+                            "y": 610
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_find",
+                        "position": {
+                            "h": 270,
+                            "w": 1368,
+                            "x": 36,
+                            "y": 870
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_detail",
+                        "position": {
+                            "h": 330,
+                            "w": 1368,
+                            "x": 36,
+                            "y": 1150
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_list",
+                        "position": {
+                            "h": 700,
+                            "w": 1368,
+                            "x": 36,
+                            "y": 1490
+                        },
+                        "type": "block"
+                    },
+                    {
+                        "item": "p_raw",
+                        "position": {
+                            "h": 840,
+                            "w": 1368,
+                            "x": 36,
+                            "y": 2200
+                        },
+                        "type": "block"
+                    }
+                ],
+                "type": "absolute"
+            }
+        },
+        "tabs": {
+            "items": [
+                {
+                    "label": "Overview",
+                    "layoutId": "layout_1"
+                },
+                {
+                    "label": "Health",
+                    "layoutId": "layout_2"
+                },
+                {
+                    "label": "Setup",
+                    "layoutId": "layout_3"
+                }
+            ]
+        }
+    }
+}

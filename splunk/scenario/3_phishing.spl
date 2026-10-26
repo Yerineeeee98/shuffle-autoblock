@@ -1,0 +1,65 @@
+```Allowed traffic logs + firewall security logs (macros: cip_sc_traffic, cip_sc_threat_logs)```
+((`cip_sc_traffic`) OR (`cip_sc_threat_logs`))
+earliest=-16m@m latest=-1m@m
+
+```Common traffic field names (macro: cip_sc_normalize)```
+| `cip_sc_normalize`
+
+```Common security log field names (macro: cip_sc_threat_normalize)```
+| `cip_sc_threat_normalize`
+
+```Internal PCs only```
+| where cidrmatch("10.0.0.0/8", ab_src) OR cidrmatch("172.16.0.0/12", ab_src) OR cidrmatch("192.168.0.0/16", ab_src)
+
+```Event time = the PC's last block/detection in the last 10 minutes (PCs without one are dropped below)```
+```Trigger: any web filter block, or an antivirus detection whose name has Phish or Redir```
+| eval is_rp=if(ab_trig=1 AND (ab_t_kind="web" OR (ab_t_kind="av" AND match(coalesce(ab_t_name, ""), "(?i)phish|redir"))) AND _time >= relative_time(now(), "-11m@m"), 1, 0)
+| eventstats max(eval(if(is_rp=1, _time, null()))) AS evt_time BY ab_src
+```Block details from the last block/detection only```
+| eval is_last=if(is_rp=1 AND _time=evt_time, 1, 0)
+| eventstats values(eval(if(is_last=1, ab_t_host, null()))) AS blocked_host,
+             values(eval(if(is_last=1, ab_t_url, null()))) AS blocked_url,
+             values(eval(if(is_last=1, ab_t_name, null()))) AS blocked_virus,
+             values(eval(if(is_last=1, ab_t_source, null()))) AS detection_source,
+             values(eval(if(is_last=1, ab_t_dst, null()))) AS blocked_dst,
+             values(eval(if(is_last=1, substr(_raw, 1, 1500), null()))) AS trig_raw
+  BY ab_src
+
+```Keep traffic logs to public IPs in the 5 minutes before the event time (all ports)```
+| where ab_trig=0 AND isnotnull(evt_time) AND _time >= evt_time - 300 AND _time <= evt_time
+    AND NOT (cidrmatch("10.0.0.0/8", ab_dst) OR cidrmatch("172.16.0.0/12", ab_dst) OR cidrmatch("192.168.0.0/16", ab_dst)
+          OR cidrmatch("127.0.0.0/8", ab_dst) OR cidrmatch("169.254.0.0/16", ab_dst) OR cidrmatch("100.64.0.0/10", ab_dst)
+          OR cidrmatch("224.0.0.0/3", ab_dst) OR cidrmatch("0.0.0.0/8", ab_dst))
+
+```One row per PC, public IP, port```
+| stats count, dc(ab_sess) AS sess, first(_raw) AS raw_new, last(_raw) AS raw_old,
+        values(ab_pc) AS srcname, values(ab_fw) AS fw_devices, values(ab_user) AS traffic_user,
+        values(blocked_host) AS blocked_host, values(blocked_url) AS blocked_url,
+        values(blocked_virus) AS blocked_virus, values(detection_source) AS detection_source,
+        values(blocked_dst) AS blocked_dst, values(trig_raw) AS trig_raw
+  BY ab_src ab_dst ab_dport ab_proto evt_time
+| rename ab_src AS srcip, ab_dst AS dstip, ab_dport AS dstport, ab_proto AS proto
+
+```Sessions per public IP (all ports). Shuffle auto-blocks only when ip_sess >= 3 AND CIP is risky```
+| eventstats sum(sess) AS ip_sess BY srcip dstip
+| eval cond1=if(ip_sess >= 3, "met", "-")
+
+```PC name from DHCP logs (macro: cip_sc_dhcp)```
+| join type=left max=1 srcip [ search `cip_sc_dhcp` | stats latest(dhcp_host) AS dhcp_name BY dhcp_ip | rename dhcp_ip AS srcip ]
+
+| eval scen_id="phishing_click",
+       scen_name="Phishing / malicious link click",
+       hit_time=strftime(evt_time, "%m/%d %H:%M:%S")
+| sort 0 srcip, - ip_sess, dstip, - sess
+```Raw trigger log only on the first row of each PC (keeps the result small, used by the AI summary)```
+| streamstats count AS row_no BY srcip
+| eval trig_raw=if(row_no=1, mvindex(trig_raw, 0, 1), null())
+```Up to 2 raw logs to the outside IP, only when cond1=met (only these IPs can be auto-blocked; used by the AI summary)```
+| streamstats count AS ip_row BY srcip dstip
+| eval ip_raw=if(ip_row=1 AND isnotnull(mvfind(cond1, "^met$")), mvdedup(mvappend(substr(raw_old, 1, 1000), substr(raw_new, 1, 1000))), null())
+| fields - row_no ip_row raw_new raw_old
+| table scen_id, scen_name, srcip, srcname, dhcp_name,
+        dstip, dstport, proto, sess, ip_sess, cond1, count,
+        evt_time, hit_time,
+        blocked_host, blocked_url, blocked_virus,
+        detection_source, blocked_dst, fw_devices, traffic_user, trig_raw, ip_raw

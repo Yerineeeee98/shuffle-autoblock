@@ -1,0 +1,84 @@
+```Allowed traffic logs (macro: cip_sc_traffic)```
+`cip_sc_traffic`
+earliest=-16m@m latest=-1m@m
+
+```Common traffic field names (macro: cip_sc_normalize)```
+| `cip_sc_normalize`
+
+```Internal PC -> public IP only```
+| where (cidrmatch("10.0.0.0/8", ab_src) OR cidrmatch("172.16.0.0/12", ab_src) OR cidrmatch("192.168.0.0/16", ab_src))
+    AND NOT (cidrmatch("10.0.0.0/8", ab_dst) OR cidrmatch("172.16.0.0/12", ab_dst) OR cidrmatch("192.168.0.0/16", ab_dst)
+          OR cidrmatch("127.0.0.0/8", ab_dst) OR cidrmatch("169.254.0.0/16", ab_dst) OR cidrmatch("100.64.0.0/10", ab_dst)
+          OR cidrmatch("224.0.0.0/3", ab_dst) OR cidrmatch("0.0.0.0/8", ab_dst))
+
+| join type=inner max=0 ab_src
+[
+    ```Firewall security logs (macros: cip_sc_threat_logs, cip_sc_normalize, cip_sc_threat_normalize)```
+    search `cip_sc_threat_logs` earliest=-21m@m latest=-1m@m
+    | `cip_sc_normalize`
+    | `cip_sc_threat_normalize`
+    ```Admin login logs only```
+    | where ab_t_kind="login" AND isnotnull(ab_src) AND ab_src!="0.0.0.0" AND isnotnull(ab_l_result)
+    | sort 0 _time
+    ```Rule 1: failures from the same PC, account and firewall in the 10 minutes up to each login```
+    | streamstats time_window=10m count(eval(ab_l_result="failure")) AS fail_same BY ab_src ab_l_user ab_l_device
+    ```Rule 2: failures from the same PC in the 10 minutes up to each login, and on how many firewalls```
+    | streamstats time_window=10m count(eval(ab_l_result="failure")) AS fail_src,
+                  dc(eval(if(ab_l_result="failure", ab_l_device, null()))) AS fail_devs
+      BY ab_src
+    | eval rule1=if(ab_l_result="success" AND fail_same>=3, 1, 0),
+           rule2=if(fail_src>=3 AND fail_devs>=2, 1, 0)
+    ```Trigger in the last 10 minutes: every successful login, and a failed login only when rule 2 is met (last one per PC)```
+    | where _time>=relative_time(now(), "-11m@m")
+    | eventstats max(eval(if(ab_l_result="failure" AND rule2=1, _time, null()))) AS last_r2_fail BY ab_src
+    | where ab_l_result="success" OR (ab_l_result="failure" AND rule2=1 AND _time=last_r2_fail)
+    | eval evt_time=_time,
+           event_id="login:".md5(_raw),
+           cond1=if(rule1=1 OR rule2=1, "met", "-"),
+           cond_reason=mvappend(if(rule1=1, "3+ failures then success (same PC, account, firewall)", null()),
+                                if(rule2=1, "3+ failures on 2+ firewalls (same PC)", null()))
+    | dedup event_id
+    | eval trig_raw=substr(_raw, 1, 1500)
+    | rename ab_l_user AS login_user, ab_l_dst AS login_dst, ab_l_device AS login_device,
+             ab_l_status AS login_status, ab_l_method AS login_method, ab_l_result AS login_result
+    | fields ab_src evt_time event_id login_user login_dst login_device login_status login_method login_result
+             cond1 cond_reason fail_same fail_src fail_devs trig_raw
+]
+
+```Keep traffic in the 5 minutes before each login```
+| where _time>=evt_time-300 AND _time<=evt_time
+
+```One row per login, PC, public IP, port```
+| stats count, dc(ab_sess) AS sess, first(_raw) AS raw_new, last(_raw) AS raw_old,
+        values(ab_pc) AS srcname, values(ab_fw) AS fw_devices, values(ab_user) AS traffic_user,
+        values(login_user) AS login_user, values(login_dst) AS login_dst, values(login_device) AS login_device,
+        values(login_status) AS login_status, values(login_method) AS login_method, values(login_result) AS login_result,
+        values(cond1) AS cond1, values(cond_reason) AS cond_reason,
+        max(fail_same) AS fail_same, max(fail_src) AS fail_src, max(fail_devs) AS fail_devs,
+        values(trig_raw) AS trig_raw
+  BY ab_src ab_dst ab_dport ab_proto evt_time event_id
+| rename ab_src AS srcip, ab_dst AS dstip, ab_dport AS dstport, ab_proto AS proto
+
+```Sessions per public IP (info only). In this scenario cond1 is the login rule, not the session count:
+   Shuffle auto-blocks when cond1=met AND CIP is risky```
+| eventstats sum(sess) AS ip_sess BY event_id srcip dstip
+
+```PC name from DHCP logs (macro: cip_sc_dhcp)```
+| join type=left max=1 srcip [ search `cip_sc_dhcp` | stats latest(dhcp_host) AS dhcp_name BY dhcp_ip | rename dhcp_ip AS srcip ]
+
+| eval scen_id="login_outbound",
+       scen_name="Firewall admin login",
+       hit_time=strftime(evt_time, "%m/%d %H:%M:%S")
+| sort 0 srcip, evt_time, - ip_sess, dstip, - sess
+```Raw trigger log only on the first row of each detection (keeps the result small, used by the AI summary)```
+| streamstats count AS row_no BY event_id
+| eval trig_raw=if(row_no=1, mvindex(trig_raw, 0, 1), null())
+```Up to 2 raw logs to the outside IP, only when cond1=met (only these IPs can be auto-blocked; used by the AI summary)```
+| streamstats count AS ip_row BY event_id dstip
+| eval ip_raw=if(ip_row=1 AND isnotnull(mvfind(cond1, "^met$")), mvdedup(mvappend(substr(raw_old, 1, 1000), substr(raw_new, 1, 1000))), null())
+| fields - row_no ip_row raw_new raw_old
+| table scen_id, scen_name, srcip, srcname, dhcp_name,
+        dstip, dstport, proto, sess, ip_sess, cond1, cond_reason, count,
+        evt_time, hit_time, event_id,
+        login_user, login_dst, login_device, login_status, login_method, login_result,
+        fail_same, fail_src, fail_devs, fw_devices, traffic_user, trig_raw, ip_raw

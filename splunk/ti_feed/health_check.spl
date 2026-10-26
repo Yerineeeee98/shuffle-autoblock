@@ -1,0 +1,1 @@
+`cip_ab_logs` earliest=-15m@m latest=now | `cip_ab_health` | eval _time=now(), run_time=strftime(now(),"%Y-%m-%d %H:%M:%S") | collect index=summary source="ti_autoblock_health"

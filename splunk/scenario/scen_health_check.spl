@@ -1,0 +1,69 @@
+```Scenario Auto-Block Health Check (scheduled report)
+    Run: every hour at minute 37 (cron 37 * * * *), not at the same minute as the scenario alerts (every 10 min)
+    Checks that the logs the 5 scenarios read are coming in with their fields
+    (traffic: last 15 minutes; security logs: last 24 hours, because they are rare; DHCP: 24 hours; Defender: 7 days), and saves one row to
+    index=summary source="scen_autoblock_health" (the Health tab of the scenario dashboard reads it)
+    Uses the same macros as the scenario alerts, so a wrong macro shows up here```
+
+```Traffic logs of the last 15 minutes (macro: cip_sc_traffic)```
+`cip_sc_traffic`
+earliest=-15m@m latest=now
+
+```Common field names (macro: cip_sc_normalize)```
+| `cip_sc_normalize`
+
+```Flag each log: PC -> internet traffic, and which needed field is empty```
+| eval t=1,
+       t_out=if(t=1
+                AND (cidrmatch("10.0.0.0/8", ab_src) OR cidrmatch("172.16.0.0/12", ab_src) OR cidrmatch("192.168.0.0/16", ab_src))
+                AND NOT (cidrmatch("10.0.0.0/8", ab_dst) OR cidrmatch("172.16.0.0/12", ab_dst) OR cidrmatch("192.168.0.0/16", ab_dst)
+                      OR cidrmatch("127.0.0.0/8", ab_dst) OR cidrmatch("169.254.0.0/16", ab_dst) OR cidrmatch("100.64.0.0/10", ab_dst)
+                      OR cidrmatch("224.0.0.0/3", ab_dst) OR cidrmatch("0.0.0.0/8", ab_dst)), 1, 0),
+       t_noip=if(t=1 AND (isnull(ab_src) OR isnull(ab_dst)), 1, 0),
+       t_noport=if(t=1 AND isnull(ab_dport) AND in(lower(tostring(ab_proto)), "6", "17", "tcp", "udp"), 1, 0),
+       t_nodev=if(t=1 AND isnull(ab_fw), 1, 0),
+       t_nosess=if(t=1 AND isnull(ab_sess), 1, 0)
+
+```Count```
+| stats sum(t) AS n_traffic, sum(t_out) AS n_out, sum(t_noip) AS n_noip, sum(t_noport) AS n_noport,
+        sum(t_nodev) AS n_nodev, sum(t_nosess) AS n_nosess,
+        dc(ab_fw) AS n_dev
+| fillnull value=0 n_traffic n_out n_noip n_noport n_nodev n_nosess n_dev
+
+```Firewall security logs of the last 24 hours (macros: cip_sc_threat_logs, cip_sc_normalize, cip_sc_threat_normalize).
+    24 hours, not 15 minutes: web filter blocks, antivirus detections and admin logins are rare (often 0 for hours)```
+| appendcols [ search `cip_sc_threat_logs` earliest=-24h latest=now
+    | `cip_sc_normalize`
+    | `cip_sc_threat_normalize`
+    | stats count(eval(ab_t_kind="web")) AS n_web, count(eval(ab_t_kind="av")) AS n_av, count(eval(ab_t_kind="login")) AS n_login,
+            count(eval(ab_trig=1 AND isnull(ab_src))) AS n_sec_nosrc,
+            count(eval(ab_t_kind="login" AND isnull(ab_l_result))) AS n_login_nores ]
+| fillnull value=0 n_web n_av n_login n_sec_nosrc n_login_nores
+| eval n_sec=n_web + n_av + n_login
+
+```DHCP logs (macro: cip_sc_dhcp, it reads the last 7 days): count of the last 24 hours and the latest one```
+| appendcols [ search `cip_sc_dhcp` | stats count(eval(_time >= relative_time(now(), "-24h"))) AS n_dhcp, max(_time) AS dhcp_last ]
+
+```Defender malware alerts (macro: cip_sc_defender_alerts), last 7 days. Shown only, never a problem (alerts are rare, and some companies have no Defender)```
+| appendcols [ search `cip_sc_defender_alerts` earliest=-7d latest=now | stats count AS n_def, max(_time) AS def_last ]
+| fillnull value=0 n_dhcp n_def
+
+```Verdict: the first rule that matches (5% = 1 in 20 logs, like the TI health check)```
+| eval verdict=case(
+    n_traffic=0, "Problem: No traffic logs (check cip_sc_traffic)",
+    n_noip*20 > n_traffic, "Problem: 5%+ traffic logs missing source or destination IP (check cip_sc_normalize)",
+    n_noport*20 > n_traffic, "Problem: 5%+ TCP/UDP traffic logs missing the destination port (check cip_sc_normalize)",
+    n_nodev*20 > n_traffic, "Problem: 5%+ traffic logs missing the firewall name (check cip_sc_normalize)",
+    n_nosess*20 > n_traffic, "Problem: 5%+ traffic logs missing the session (check cip_sc_normalize)",
+    n_out=0, "Problem: No PC-to-internet traffic (check cip_sc_traffic and the IP fields in cip_sc_normalize)",
+    n_sec > 0 AND n_sec_nosrc*20 > n_sec, "Problem: 5%+ security logs missing the PC IP (check cip_sc_normalize and cip_sc_threat_normalize)",
+    n_login > 0 AND n_login_nores*20 > n_login, "Problem: 5%+ admin login logs without success or failure (check cip_sc_threat_normalize)",
+    n_dhcp=0 AND isnotnull(dhcp_last), "Warning: DHCP logs stopped (none in 24 hours: PC names missing, Defender alerts cannot be matched to an IP. Check cip_sc_dhcp)",
+    n_sec=0, "Warning: No web filter, antivirus or admin login logs in 24 hours (check cip_sc_threat_logs)",
+    true(), "OK")
+
+```Save one row```
+| eval _time=now(), run_time=strftime(now(), "%Y-%m-%d %H:%M:%S")
+| table _time run_time verdict n_traffic n_out n_noip n_noport n_nodev n_nosess n_dev
+        n_web n_av n_login n_sec n_sec_nosrc n_login_nores n_dhcp dhcp_last n_def def_last
+| collect index=summary source="scen_autoblock_health"

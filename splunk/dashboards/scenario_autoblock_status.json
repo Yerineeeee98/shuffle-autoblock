@@ -1,0 +1,3654 @@
+{
+	"title": "Scenario Auto-Block Status",
+	"description": "5 scenario auto-block: Criminal IP check, firewall auto-block (A) and block recommendations (B)",
+	"inputs": {
+		"input_time": {
+			"type": "input.timerange",
+			"title": "Time range",
+			"options": {
+				"token": "global_time",
+				"defaultValue": "-7d@h,now"
+			}
+		},
+		"input_scen": {
+			"type": "input.dropdown",
+			"title": "Scenario",
+			"options": {
+				"token": "scen",
+				"defaultValue": "*",
+				"items": [
+					{
+						"label": "All",
+						"value": "*"
+					},
+					{
+						"label": "Risky port access",
+						"value": "outbound_riskport"
+					},
+					{
+						"label": "Non-standard port access",
+						"value": "outbound_nonstd_port"
+					},
+					{
+						"label": "Phishing / malicious link click",
+						"value": "phishing_click"
+					},
+					{
+						"label": "Malware infection",
+						"value": "malware_outbound"
+					},
+					{
+						"label": "Firewall admin login",
+						"value": "login_outbound"
+					}
+				]
+			}
+		}
+	},
+	"defaults": {
+		"dataSources": {
+			"ds.search": {
+				"options": {
+					"queryParameters": {
+						"earliest": "$global_time.earliest$",
+						"latest": "$global_time.latest$"
+					}
+				}
+			}
+		},
+		"tokens": {
+			"default": {
+				"show_chk": {
+					"value": "none"
+				},
+				"chk_no": {
+					"value": "none"
+				},
+				"log_n": {
+					"value": "none"
+				},
+				"rec_ip": {
+					"value": "none"
+				},
+				"cip_show": {
+					"value": "none"
+				}
+			}
+		}
+	},
+	"dataSources": {
+		"ds_base": {
+			"type": "ds.search",
+			"name": "ds_base",
+			"options": {
+				"query": "index=summary source IN (\"scen_autoblock_eval\",\"scen_autoblock_fg\") scen_id=\"$scen$\" | fields _time source rec_type scen_id scen_name pc pc_ip ip evidence sess detail cond_reason evt fg_status fg_text fg_error n_a n_b n_c n_d n_none cip_fail run_time",
+				"refresh": "5m",
+				"refreshType": "delay"
+			}
+		},
+		"ds_k_block": {
+			"type": "ds.chain",
+			"name": "ds_k_block",
+			"options": {
+				"query": "| search source=\"scen_autoblock_fg\" fg_status=\"registered\" | sort 0 _time | streamstats dc(ip) AS v | timechart span=1h max(v) AS v | filldown v | fillnull value=0 v | appendpipe [stats count | where count=0 | eval v=0 | fields v]",
+				"extend": "ds_base"
+			}
+		},
+		"ds_k_rec": {
+			"type": "ds.chain",
+			"name": "ds_k_rec",
+			"options": {
+				"query": "| search rec_type=\"recommend\" | sort 0 _time | streamstats dc(ip) AS v | timechart span=1h max(v) AS v | filldown v | fillnull value=0 v | appendpipe [stats count | where count=0 | eval v=0 | fields v]",
+				"extend": "ds_base"
+			}
+		},
+		"ds_k_fail": {
+			"type": "ds.chain",
+			"name": "ds_k_fail",
+			"options": {
+				"query": "| search source=\"scen_autoblock_fg\" (fg_status=\"failed\" OR fg_status=\"unconfirmed\") | sort 0 _time | streamstats dc(ip) AS v | timechart span=1h max(v) AS v | filldown v | fillnull value=0 v | appendpipe [stats count | where count=0 | eval v=0 | fields v]",
+				"extend": "ds_base"
+			}
+		},
+		"ds_k_exc": {
+			"type": "ds.chain",
+			"name": "ds_k_exc",
+			"options": {
+				"query": "| search rec_type=\"excluded\" | sort 0 _time | streamstats dc(ip) AS v | timechart span=1h max(v) AS v | filldown v | fillnull value=0 v | appendpipe [stats count | where count=0 | eval v=0 | fields v]",
+				"extend": "ds_base"
+			}
+		},
+		"ds_donut": {
+			"type": "ds.chain",
+			"name": "ds_donut",
+			"options": {
+				"query": "| eval Result=case(source=\"scen_autoblock_fg\" AND fg_status=\"registered\",\"Auto-blocked\", source=\"scen_autoblock_fg\" AND (fg_status=\"failed\" OR fg_status=\"unconfirmed\"),\"Block failed\", rec_type=\"recommend\",\"Recommended\", rec_type=\"excluded\",\"White list\") | where isnotnull(Result) | stats dc(ip) AS IPs BY Result | eval o=case(Result=\"Auto-blocked\",1, Result=\"Block failed\",2, Result=\"Recommended\",3, true(),4) | sort o | fields Result IPs",
+				"extend": "ds_base"
+			}
+		},
+		"ds_ratio": {
+			"type": "ds.chain",
+			"name": "ds_ratio",
+			"options": {
+				"query": "| stats sum(eval(if(Result=\"Auto-blocked\",IPs,0))) AS a sum(IPs) AS t | eval v=if(isnull(t) OR t=0,0,round(a*100/t)) | fields v",
+				"extend": "ds_donut"
+			}
+		},
+		"ds_last": {
+			"type": "ds.chain",
+			"name": "ds_last",
+			"options": {
+				"query": "| stats max(_time) AS t | eval v=if(isnull(t),\"No record\",strftime(t,\"%m-%d %H:%M\")) | fields v",
+				"extend": "ds_base"
+			}
+		},
+		"ds_by_scen": {
+			"type": "ds.chain",
+			"name": "ds_by_scen",
+			"options": {
+				"query": "| eval k=case(source=\"scen_autoblock_fg\" AND fg_status=\"registered\",\"Blocked\", rec_type=\"recommend\",\"Recommended\", rec_type=\"excluded\",\"White list\") | where isnotnull(k) | chart dc(ip) OVER scen_name BY k | append [| makeresults | eval scen_name=split(\"Risky port access,Non-standard port access,Phishing / malicious link click,Malware infection,Firewall admin login\",\",\") | mvexpand scen_name | fields scen_name] | stats sum(*) AS * BY scen_name | fillnull value=0 Blocked Recommended \"White list\" | eval o=case(scen_name=\"Risky port access\",0,scen_name=\"Non-standard port access\",1,scen_name=\"Phishing / malicious link click\",2,scen_name=\"Malware infection\",3,scen_name=\"Firewall admin login\",4,true(),9) | sort o | fields scen_name Blocked Recommended \"White list\" | rename scen_name AS Scenario",
+				"extend": "ds_base"
+			}
+		},
+		"ds_trend": {
+			"type": "ds.chain",
+			"name": "ds_trend",
+			"options": {
+				"query": "| eval k=case(source=\"scen_autoblock_fg\" AND fg_status=\"registered\",\"Blocked\", rec_type=\"recommend\",\"Recommended\") | where isnotnull(k) | timechart span=1d dc(ip) BY k | fillnull value=0 Blocked Recommended",
+				"extend": "ds_base"
+			}
+		},
+		"ds_history": {
+			"type": "ds.chain",
+			"name": "ds_history",
+			"options": {
+				"query": "| search source=\"scen_autoblock_fg\" fg_status!=\"skipped\" | sort 0 - _time | eval Time=strftime(_time,\"%Y-%m-%d %H:%M\"), Result=case(fg_status=\"registered\",\"Blocked\", fg_status=\"failed\",\"Block failed\", true(),\"Needs check\"), Condition=if(scen_id=\"login_outbound\", coalesce(cond_reason,\"-\"), sess.\" sessions\") | table Time scen_name pc ip evidence Condition detail Result | rename scen_name AS Scenario, pc AS PC, ip AS \"Risky IP\", evidence AS \"CIP evidence\", detail AS Detail",
+				"extend": "ds_base"
+			}
+		},
+		"ds_recommend": {
+			"type": "ds.chain",
+			"name": "ds_recommend",
+			"options": {
+				"query": "| eventstats max(eval(if(source=\"scen_autoblock_fg\" AND fg_status=\"registered\",1,0))) AS blk BY ip | search rec_type=\"recommend\" | sort 0 - _time | stats max(_time) AS t count AS seen dc(pc) AS pcs values(scen_name) AS scen first(evidence) AS ev max(sess) AS s max(blk) AS blk BY ip | eval \"Last seen\"=strftime(t,\"%Y-%m-%d %H:%M\"), Status=if(blk=1,\"Blocked later\",\"Not blocked\"), Scenario=mvjoin(scen,\", \") | sort 0 blk - t | table \"Last seen\" ip ev Scenario pcs s seen Status | rename ip AS \"Risky IP\", ev AS \"CIP evidence\", pcs AS PCs, s AS \"Max sessions\", seen AS \"Times seen\"",
+				"extend": "ds_base"
+			}
+		},
+		"ds_rec_detail": {
+			"type": "ds.chain",
+			"name": "ds_rec_detail",
+			"options": {
+				"query": "| search rec_type=\"recommend\" ip=\"$rec_ip$\" | sort 0 - _time | stats max(_time) AS t count AS seen max(sess) AS s first(detail) AS d first(evt) AS e BY pc scen_name | eval \"Last seen\"=strftime(t,\"%Y-%m-%d %H:%M\") | sort 0 - t | table \"Last seen\" scen_name pc s d e seen | rename scen_name AS Scenario, pc AS PC, s AS \"Max sessions\", d AS Detail, e AS \"Event time\", seen AS \"Times seen\"",
+				"extend": "ds_base"
+			}
+		},
+		"ds_h_alerts": {
+			"type": "ds.search",
+			"name": "ds_h_alerts",
+			"options": {
+				"query": "| rest /servicesNS/-/-/saved/searches splunk_server=local count=0 | rename search AS spl | where match(spl, \"scen_id=\\\"(outbound_riskport|outbound_nonstd_port|phishing_click|malware_outbound|login_outbound)\\\"\") | rex field=spl \"scen_id=\\\"(?<scen_id>[a-z_]+)\\\"\" | eval Enabled=if(disabled=1,\"No\",\"Yes\"), Schedule=if(is_scheduled=1, cron_schedule, \"Not scheduled\"), Webhook=if(like(actions,\"%webhook%\"),\"Yes\",\"No\") | fields title scen_id Enabled Schedule Webhook | join type=left max=1 title [ search index=_internal sourcetype=scheduler earliest=-24h latest=now savedsearch_name=* | stats count AS runs count(eval(len(alert_actions)>0)) AS triggered latest(status) AS last_status max(_time) AS last_run BY savedsearch_name | rename savedsearch_name AS title ] | join type=left max=1 scen_id [ search index=summary source=\"scen_autoblock_eval\" rec_type=\"run\" earliest=-24h latest=now | stats count AS recorded max(_time) AS rec_last BY scen_id ] | fillnull value=0 runs triggered recorded | fillnull value=\"-\" last_status | eventstats sum(runs) AS all_runs | eval Verdict=case(Enabled=\"No\",\"Disabled\", Schedule=\"Not scheduled\",\"Not scheduled\", Webhook=\"No\",\"No webhook\", runs=0 AND recorded>0,\"OK\", all_runs=0,\"No scheduler log\", runs=0,\"Not running\", NOT in(last_status,\"success\",\"continued\"),\"Search failing\", triggered>recorded,\"Shuffle not recording\", true(),\"OK\") | eval \"Last run\"=case(isnotnull(last_run), strftime(last_run,\"%m-%d %H:%M\"), isnotnull(rec_last), strftime(rec_last,\"%m-%d %H:%M\").\" (Shuffle)\", true(),\"-\"), o=case(scen_id=\"outbound_riskport\",0,scen_id=\"outbound_nonstd_port\",1,scen_id=\"phishing_click\",2,scen_id=\"malware_outbound\",3,scen_id=\"login_outbound\",4,true(),9) | sort o title | table Verdict title scen_id Enabled Schedule Webhook \"Last run\" last_status runs triggered recorded | rename title AS Alert, scen_id AS Scenario, last_status AS \"Last status\", runs AS \"Runs (24h)\", triggered AS \"Sent to Shuffle (24h)\", recorded AS \"Recorded by Shuffle (24h)\"",
+				"refresh": "5m",
+				"refreshType": "delay"
+			}
+		},
+		"ds_h_state": {
+			"type": "ds.chain",
+			"name": "ds_h_state",
+			"options": {
+				"query": "| stats count(eval(Verdict=\"OK\")) AS ok count(eval(Verdict!=\"OK\" AND Verdict!=\"No scheduler log\")) AS bad count AS t | eval v=case(t=0,\"No alerts\", ok=t,\"OK\", ok=0 AND bad=t,\"Problem\", true(),\"Check\") | fields v",
+				"extend": "ds_h_alerts"
+			}
+		},
+		"ds_h_found": {
+			"type": "ds.chain",
+			"name": "ds_h_found",
+			"options": {
+				"query": "| stats dc(Scenario) AS v | eval v=v.\" / 5\"",
+				"extend": "ds_h_alerts"
+			}
+		},
+		"ds_h_runs": {
+			"type": "ds.search",
+			"name": "ds_h_runs",
+			"options": {
+				"query": "index=summary source=\"scen_autoblock_eval\" rec_type=\"run\" earliest=-24h latest=now | sort 0 - _time | eval Time=strftime(_time,\"%m-%d %H:%M\"), Checked=tonumber(n_a)+tonumber(n_b)+tonumber(n_c)+tonumber(n_d)+tonumber(n_none) | table Time scen_name Checked n_a n_b n_c n_d n_none cip_fail | rename scen_name AS Scenario, Checked AS \"Outside IPs\", n_a AS \"A blocked\", n_b AS \"B recommended\", n_c AS \"C white list\", n_d AS \"D not risky\", n_none AS \"No CIP result\", cip_fail AS \"CIP failures\""
+			}
+		},
+		"ds_h_log_state": {
+			"type": "ds.search",
+			"name": "ds_h_log_state",
+			"options": {
+				"query": "index=summary source=\"scen_autoblock_health\" earliest=-24h latest=now | sort 0 - _time | eval Status=case(now()-_time>7200,\"Stopped\", verdict=\"OK\",\"OK\", match(verdict,\"^Warning\"),\"Warning\", true(),\"Problem\") | head 1 | table Status | appendpipe [stats count | where count=0 | eval Status=\"No record\" | table Status]",
+				"refresh": "5m",
+				"refreshType": "delay"
+			}
+		},
+		"ds_h_log_hist": {
+			"type": "ds.search",
+			"name": "ds_h_log_hist",
+			"options": {
+				"query": "index=summary source=\"scen_autoblock_health\" earliest=-24h latest=now | sort 0 - _time | eval Status=case(verdict=\"OK\",\"OK\", match(verdict,\"^Warning\"),\"Warning\", true(),\"Problem\") | eval Time=strftime(_time,\"%m-%d %H:%M\"), DHCP=n_dhcp.if(isnotnull(dhcp_last), \" (last \".strftime(dhcp_last,\"%m-%d %H:%M\").\")\", \"\"), Defender=n_def.if(isnotnull(def_last), \" (last \".strftime(def_last,\"%m-%d %H:%M\").\")\", \"\") | table Time Status verdict n_traffic n_out n_noip n_noport n_nodev n_nosess n_dev n_web n_av n_login n_sec_nosrc DHCP Defender | rename verdict AS Verdict, n_traffic AS \"Traffic (15m)\", n_out AS \"PC to internet\", n_noip AS \"No IP\", n_noport AS \"No port\", n_nodev AS \"No firewall\", n_nosess AS \"No session\", n_dev AS Firewalls, n_web AS \"Web filter (24h)\", n_av AS \"Antivirus (24h)\", n_login AS \"Admin login (24h)\", n_sec_nosrc AS \"Security logs no PC IP (24h)\", DHCP AS \"DHCP (24h)\", Defender AS \"Defender (7d)\" | appendpipe [stats count | where count=0 | eval Time=\"-\", Status=\"No record\", Verdict=\"No check in the last 24 hours. Save scen_health_check.spl as a scheduled report (every hour, cron 37 * * * *)\" | fields - count]",
+				"refresh": "5m",
+				"refreshType": "delay"
+			}
+		},
+		"ds_h_lguide": {
+			"type": "ds.search",
+			"name": "ds_h_lguide",
+			"options": {
+				"query": "| makeresults count=5 | streamstats count AS n | eval Status=case(n=1,\"OK\",n=2,\"Warning\",n=3,\"Problem\",n=4,\"Stopped\",n=5,\"No record\"), Meaning=case(n=1,\"The logs the 5 scenarios read are coming in with their fields\",n=2,\"No web filter, antivirus or admin login logs in 24 hours, or DHCP logs stopped (none in 24 hours after some in the last 7 days)\",n=3,\"No traffic logs, or 5%+ logs are missing a field the scenarios need. Alerts then run without error but find nothing\",n=4,\"No check in the last 2 hours: the report is off or failing\",n=5,\"The check report has not saved anything in the last 24 hours\"), Check=case(n=1,\"-\",n=2,\"cip_sc_threat_logs (security logs) or cip_sc_dhcp (DHCP)\",n=3,\"The macro named in the verdict: cip_sc_traffic, cip_sc_normalize or cip_sc_threat_normalize\",n=4,\"Settings > Searches, reports, and alerts > Scenario Auto-Block Health Check (enabled, schedule 37 * * * *)\",n=5,\"Save scen_health_check.spl as a scheduled report and run it once\") | table Status Meaning Check"
+			}
+		},
+		"ds_h_cipfail": {
+			"type": "ds.search",
+			"name": "ds_h_cipfail",
+			"options": {
+				"query": "index=summary source=\"scen_autoblock_eval\" rec_type=\"run\" earliest=-24h latest=now | stats sum(cip_fail) AS v sum(n_none) AS w | fillnull value=0 v w | eval v=v | fields v"
+			}
+		},
+		"ds_h_guide": {
+			"type": "ds.search",
+			"name": "ds_h_guide",
+			"options": {
+				"query": "| makeresults count=8 | streamstats count AS n | eval Verdict=case(n=1,\"Disabled\",n=2,\"OK\",n=3,\"Not scheduled\",n=4,\"No webhook\",n=5,\"No scheduler log\",n=6,\"Not running\",n=7,\"Search failing\",n=8,\"Shuffle not recording\"), Meaning=case(n=1,\"The alert is turned off\",n=2,\"Alert runs on schedule and every webhook reached Shuffle. Without access to the scheduler log (index=_internal), Shuffle records are used instead\",n=3,\"The alert has no schedule\",n=4,\"The alert has no webhook action, so Shuffle never gets the result\",n=5,\"Your Splunk role cannot read the scheduler log (index=_internal), and Shuffle has no record yet. The alert may be fine: it sends to Shuffle only when it finds something\",n=6,\"No run in the scheduler log and no Shuffle record in the last 24 hours\",n=7,\"The last run did not finish (skipped or failed)\",n=8,\"Splunk sent results to Shuffle more often than Shuffle saved a record\"), Check=case(n=1,\"Settings > Searches, reports, and alerts > Enable\",n=2,\"-\",n=3,\"Edit schedule: every 10 minutes (cron */10 * * * *)\",n=4,\"Edit alert > Trigger actions > Webhook (Shuffle webhook URL)\",n=5,\"Ask the Splunk admin for read access to index=_internal, or wait for the first Shuffle record\",n=6,\"Schedule and the search head scheduler (Jobs page)\",n=7,\"Run the alert SPL in Search and read the error; check search quota and concurrency\",n=8,\"Shuffle workflow runs: Risk eval and Splunk 2 nodes\") | table Verdict Meaning Check"
+			}
+		},
+		"ds_h_cipfail_list": {
+			"type": "ds.search",
+			"name": "ds_h_cipfail_list",
+			"options": {
+				"query": "index=summary source=\"scen_autoblock_eval\" rec_type IN (\"run\",\"cip_fail\") earliest=-24h latest=now | eventstats count(eval(rec_type=\"cip_fail\")) AS d BY run_time scen_id | where rec_type=\"cip_fail\" OR (rec_type=\"run\" AND tonumber(cip_fail)>0 AND d=0) | eval Time=strftime(_time,\"%m-%d %H:%M\"), IP=coalesce(ip,\"-\"), Reason=if(rec_type=\"run\", cip_fail.\" failed (reason not saved: recorded before details were added)\", coalesce(detail,\"-\")) | eval Reason=Reason.case(match(Reason,\"(?i)invalid ip\"), \" (not an IPv4 address)\", match(Reason,\"(?i)missing parameter\"), \" (no IP was sent: check the CIP 1 node)\", match(Reason,\"^HTTP 500\"), \" (CIP server error, or no CIP data for this IP)\", match(Reason,\"^HTTP 429\"), \" (too many lookups in a short time)\", match(Reason,\"^HTTP 40[13]\"), \" (API key or permission problem)\", match(Reason,\"(?i)timed out|timeout\"), \" (CIP did not answer in time)\", true(), \"\") | sort 0 - _time | table Time scen_name IP Reason | rename scen_name AS Scenario | appendpipe [stats count | where count=0 | eval Time=\"-\", Scenario=\"-\", IP=\"-\", Reason=\"No CIP lookup failure in the last 24 hours\" | fields - count] | where match(\"$cip_show$\", \"^[0-9]+$\")"
+			}
+		},
+		"ds_h_cf_close": {
+			"type": "ds.search",
+			"name": "ds_h_cf_close",
+			"options": {
+				"query": "| makeresults | where match(\"$cip_show$\", \"^[0-9]+$\") | eval Menu=\"▼ CIP lookup failures (last 24 hours) · which alert, which IP, why   (Click to close)\" | table Menu"
+			}
+		},
+		"ds_h_is_open": {
+			"type": "ds.search",
+			"name": "ds_h_is_open",
+			"options": {
+				"query": "| makeresults | where match(\"$cip_show$\", \"^[0-9]+$\")"
+			}
+		},
+		"ds_h_is_closed": {
+			"type": "ds.search",
+			"name": "ds_h_is_closed",
+			"options": {
+				"query": "| makeresults | where NOT match(\"$cip_show$\", \"^[0-9]+$\")"
+			}
+		},
+		"ds_h_alerts_o": {
+			"type": "ds.chain",
+			"name": "ds_h_alerts_o",
+			"options": {
+				"query": "| where match(\"$cip_show$\", \"^[0-9]+$\")",
+				"extend": "ds_h_alerts"
+			}
+		},
+		"ds_h_alerts_c": {
+			"type": "ds.chain",
+			"name": "ds_h_alerts_c",
+			"options": {
+				"query": "| where NOT match(\"$cip_show$\", \"^[0-9]+$\")",
+				"extend": "ds_h_alerts"
+			}
+		},
+		"ds_h_runs_o": {
+			"type": "ds.chain",
+			"name": "ds_h_runs_o",
+			"options": {
+				"query": "| where match(\"$cip_show$\", \"^[0-9]+$\")",
+				"extend": "ds_h_runs"
+			}
+		},
+		"ds_h_runs_c": {
+			"type": "ds.chain",
+			"name": "ds_h_runs_c",
+			"options": {
+				"query": "| where NOT match(\"$cip_show$\", \"^[0-9]+$\")",
+				"extend": "ds_h_runs"
+			}
+		},
+		"ds_h_guide_o": {
+			"type": "ds.chain",
+			"name": "ds_h_guide_o",
+			"options": {
+				"query": "| where match(\"$cip_show$\", \"^[0-9]+$\")",
+				"extend": "ds_h_guide"
+			}
+		},
+		"ds_h_guide_c": {
+			"type": "ds.chain",
+			"name": "ds_h_guide_c",
+			"options": {
+				"query": "| where NOT match(\"$cip_show$\", \"^[0-9]+$\")",
+				"extend": "ds_h_guide"
+			}
+		},
+		"ds_h_log_hist_o": {
+			"type": "ds.chain",
+			"name": "ds_h_log_hist_o",
+			"options": {
+				"query": "| where match(\"$cip_show$\", \"^[0-9]+$\")",
+				"extend": "ds_h_log_hist"
+			}
+		},
+		"ds_h_log_hist_c": {
+			"type": "ds.chain",
+			"name": "ds_h_log_hist_c",
+			"options": {
+				"query": "| where NOT match(\"$cip_show$\", \"^[0-9]+$\")",
+				"extend": "ds_h_log_hist"
+			}
+		},
+		"ds_h_lguide_o": {
+			"type": "ds.chain",
+			"name": "ds_h_lguide_o",
+			"options": {
+				"query": "| where match(\"$cip_show$\", \"^[0-9]+$\")",
+				"extend": "ds_h_lguide"
+			}
+		},
+		"ds_h_lguide_c": {
+			"type": "ds.chain",
+			"name": "ds_h_lguide_c",
+			"options": {
+				"query": "| where NOT match(\"$cip_show$\", \"^[0-9]+$\")",
+				"extend": "ds_h_lguide"
+			}
+		},
+		"ds_p_checks": {
+			"type": "ds.search",
+			"name": "ds_p_checks",
+			"options": {
+				"query": "`cip_sc_traffic` earliest=-15m latest=now | head 5000 | `cip_sc_normalize` | stats count AS n count(eval(isnotnull(ab_src) AND isnotnull(ab_dst) AND (isnotnull(ab_dport) OR NOT in(lower(tostring(ab_proto)),\"6\",\"17\",\"tcp\",\"udp\")) AND isnotnull(ab_fw) AND isnotnull(ab_sess))) AS f | eval No=split(\"1,2\",\",\") | mvexpand No | eval p=if(n=0,0,round(f*100/n)), Check=case(No=\"1\",\"Traffic logs (macro cip_sc_traffic, last 15 min)\", true(),\"Traffic fields (macro cip_sc_normalize)\"), UsedBy=\"All 5 scenarios\", Found=case(No=\"1\", n.\" logs (up to 5000)\", true(), p.\"% of logs have source IP, destination IP, port (TCP/UDP only), firewall name and session\"), Status=case(No=\"1\" AND n>0,\"✅ OK\", No=\"1\",\"❌ No logs\", n=0,\"— No logs\", p>=95,\"✅ OK\", true(),\"⚠️ Fields missing\"), Todo=case(No=\"1\",\"Set the index and sourcetype of allowed traffic logs in cip_sc_traffic\", true(),\"Add your firewall field names to the coalesce lists in cip_sc_normalize\") | append [ search `cip_sc_dhcp` | stats dc(dhcp_ip) AS n | eval No=\"3\", Check=\"PC names from DHCP logs (macro cip_sc_dhcp, last 7 days)\", UsedBy=\"PC name in Slack (all); Defender PC to IP (malware)\", Found=n.\" IPs with a PC name\", Status=if(n>0,\"✅ OK\",\"ℹ️ Optional\"), Todo=if(n>0,\"-\",\"Without DHCP logs only the PC IP is shown; Defender alerts cannot be matched by IP\") ] | append [ search `cip_sc_threat_logs` earliest=-24h latest=now | `cip_sc_normalize` | `cip_sc_threat_normalize` | stats count(eval(ab_t_kind=\"web\")) AS web count(eval(ab_t_kind=\"av\")) AS av count(eval(ab_t_kind=\"login\" AND isnotnull(ab_l_result))) AS login count(eval(ab_trig=1)) AS t count(eval(ab_trig=1 AND isnotnull(ab_src))) AS s | eval No=split(\"4,5,6,7\",\",\") | mvexpand No | eval p=if(t=0,0,round(s*100/t)), Check=case(No=\"4\",\"Web filter blocks (macro cip_sc_threat_logs, last 24h)\", No=\"5\",\"Antivirus detections (last 24h)\", No=\"6\",\"Admin login success / failure (last 24h)\", true(),\"Security log fields (macro cip_sc_threat_normalize)\"), UsedBy=case(No=\"4\",\"Phishing\", No=\"5\",\"Malware (firewall), phishing (phish / redirect names)\", No=\"6\",\"Admin login\", true(),\"Phishing, malware, admin login\"), Found=case(No=\"4\", web.\" blocks\", No=\"5\", av.\" detections\", No=\"6\", login.\" logins\", true(), p.\"% of security logs have the PC IP\"), Status=case(No=\"4\" AND web>0,\"✅ OK\", No=\"4\",\"ℹ️ None in 24h\", No=\"5\" AND av>0,\"✅ OK\", No=\"5\",\"ℹ️ None in 24h\", No=\"6\" AND login>0,\"✅ OK\", No=\"6\",\"ℹ️ None in 24h\", t=0,\"— No logs\", p>=95,\"✅ OK\", true(),\"⚠️ Fields missing\"), Todo=case(No=\"7\",\"Add your field names to cip_sc_threat_normalize (and the source IP to cip_sc_normalize)\", true(),\"If you expect some, check the index, sourcetype and conditions in cip_sc_threat_logs\") ] | append [ search `cip_sc_defender_alerts` earliest=-7d latest=now | stats count AS n | eval No=\"8\", Check=\"Defender malware alerts (macro cip_sc_defender_alerts, last 7 days)\", UsedBy=\"Malware (Defender)\", Found=n.\" alerts\", Status=if(n>0,\"✅ OK\",\"ℹ️ Optional\"), Todo=if(n>0,\"-\",\"Without Defender the malware scenario uses firewall antivirus logs only\") ] | append [ | rest /servicesNS/-/-/saved/searches splunk_server=local count=0 | rename search AS spl | where match(spl, \"scen_id=\\\"(outbound_riskport|outbound_nonstd_port|phishing_click|malware_outbound|login_outbound)\\\"\") AND is_scheduled=1 AND disabled=0 | rex field=spl \"scen_id=\\\"(?<scen_id>[a-z_]+)\\\"\" | stats dc(scen_id) AS n | eval No=\"9\", Check=\"Scenario alerts (enabled and scheduled)\", UsedBy=\"Shuffle workflow\", Found=n.\" / 5 alerts\", Status=case(n=5,\"✅ OK\", n=0,\"❌ None\", true(),\"⚠️ Some missing\"), Todo=if(n=5,\"-\",\"Save each scenario SPL as an alert: every 10 minutes, trigger when results > 0, webhook to Shuffle (see the Health tab)\") ] | append [ search index=summary source=\"scen_autoblock_eval\" earliest=-7d latest=now | stats count AS n max(_time) AS t | eval No=\"10\", Check=\"Shuffle records (index=summary source=scen_autoblock_eval, last 7 days)\", UsedBy=\"This dashboard\", Found=if(n>0, n.\" records, last \".strftime(t,\"%m-%d %H:%M\"), \"0 records\"), Status=if(n>0,\"✅ OK\",\"⚠️ No record\"), Todo=if(n>0,\"-\",\"Check the Splunk 2 node in the Shuffle workflow (it saves the Risk eval and FG record results)\") ] | eval No=tonumber(No) | sort No | table No Check UsedBy Status Found Todo | rename UsedBy AS \"Used by\", Todo AS \"What to do\""
+			}
+		},
+		"ds_p_card": {
+			"type": "ds.chain",
+			"name": "prep",
+			"options": {
+				"query": "| eval st=case(like(Status,\"✅%\"),\"ok\", like(Status,\"❌%\"),\"bad\", like(Status,\"⚠%\"),\"warn\", true(),\"info\") | rex field=Found \"^(?<num>\\d+)\" | stats values(eval(if(No=1,st,null()))) AS s1 values(eval(if(No=2,st,null()))) AS s2 values(eval(if(No=3,st,null()))) AS s3 values(eval(if(No=4,st,null()))) AS s4 values(eval(if(No=5,st,null()))) AS s5 values(eval(if(No=6,st,null()))) AS s6 values(eval(if(No=7,st,null()))) AS s7 values(eval(if(No=8,st,null()))) AS s8 values(eval(if(No=10,st,null()))) AS s10 values(eval(if(No=9,num,null()))) AS al | fillnull value=\"info\" s1 s2 s3 s4 s5 s6 s7 s8 s10 | fillnull value=0 al | foreach s* [ eval i_<<FIELD>>=case(<<FIELD>>=\"ok\",\"✅\", <<FIELD>>=\"bad\",\"❌\", <<FIELD>>=\"warn\",\"⚠️\", true(),\"ℹ️\") ] | eval state=case(s1!=\"ok\" OR s2!=\"ok\",\"logs\", s7=\"warn\",\"fields\", al<5,\"alerts\", s10!=\"ok\",\"shuffle\", true(),\"ok\"), title=case(state=\"ok\",\"✅ The 5 scenarios are ready\", state=\"logs\",\"❌ Cannot read the firewall traffic logs\", state=\"fields\",\"⚠️ Security log fields are missing\", state=\"alerts\",\"⚠️ Turn on the 5 scenario alerts\", true(),\"⚠️ Waiting for the first Shuffle record\"), desc=case(state=\"ok\",\"Logs are read, the 5 alerts are on, and Shuffle is saving its results.\", state=\"logs\",\"All 5 scenarios start from the allowed traffic logs, so none of them can run yet.\", state=\"fields\",\"Phishing, malware and admin login cannot match the security logs to a PC.\", state=\"alerts\",\"The logs are read normally. Only \".al.\" of the 5 scenario alerts are on and scheduled.\", true(),\"The alerts are on, but Shuffle has not saved a result in the last 7 days.\"), next=case(state=\"ok\",\"No more setup is needed.\", state=\"logs\",\"Set the index / sourcetype in cip_sc_traffic and the field names in cip_sc_normalize.\", state=\"fields\",\"Add your field names to cip_sc_threat_normalize (and the source IP to cip_sc_normalize).\", state=\"alerts\",\"Save each scenario SPL as an alert: every 10 minutes (*/10 * * * *), results > 0, webhook to Shuffle.\", true(),\"Check the Shuffle workflow runs: Risk eval, FG record and Splunk 2.\"), btn=case(state=\"ok\",\"Check the Health tab  →\", state=\"alerts\",\"Settings → Searches, reports, and alerts  →\", state=\"shuffle\",\"Shuffle → workflow runs  →\", true(),\"Settings → Advanced search → Search macros  →\"), logs=\"Traffic \".i_s1.\" · Fields \".i_s2.\" · Web filter \".i_s4.\" · Antivirus \".i_s5.\" · Admin login \".i_s6.\" · DHCP \".i_s3.\" · Defender \".i_s8, run=\"Alerts \".al.\" / 5 on · Shuffle records \".i_s10 | table state title desc logs run next btn",
+				"extend": "ds_p_checks",
+				"enableSmartSources": true
+			}
+		},
+		"ds_p_scen": {
+			"type": "ds.chain",
+			"name": "ds_p_scen",
+			"options": {
+				"query": "| eval st=case(like(Status,\"✅%\"),\"ok\", like(Status,\"❌%\"),\"bad\", like(Status,\"⚠%\"),\"warn\", true(),\"info\") | stats values(eval(if(No=1,st,null()))) AS s1 values(eval(if(No=2,st,null()))) AS s2 values(eval(if(No=4,st,null()))) AS s4 values(eval(if(No=5,st,null()))) AS s5 values(eval(if(No=6,st,null()))) AS s6 values(eval(if(No=7,st,null()))) AS s7 values(eval(if(No=8,st,null()))) AS s8 | eval base=if(s1=\"ok\" AND s2=\"ok\",1,0), sec=if(s7=\"ok\" OR s7=\"info\",1,0) | eval Scenario=split(\"Risky port access|Non-standard port access|Phishing / malicious link click|Malware infection|Firewall admin login\",\"|\") | mvexpand Scenario | eval need=case(Scenario=\"Risky port access\" OR Scenario=\"Non-standard port access\",\"Traffic logs\", Scenario=\"Phishing / malicious link click\",\"Traffic logs + web filter blocks\", Scenario=\"Malware infection\",\"Traffic logs + antivirus detections or Defender alerts\", true(),\"Traffic logs + admin login logs\"), recent=case(Scenario=\"Phishing / malicious link click\", if(s4=\"ok\",1,0), Scenario=\"Malware infection\", if(s5=\"ok\" OR s8=\"ok\",1,0), Scenario=\"Firewall admin login\", if(s6=\"ok\",1,0), true(), 1), Status=case(base=0,\"❌ Not ready\", Scenario!=\"Risky port access\" AND Scenario!=\"Non-standard port access\" AND sec=0,\"⚠️ Fields missing\", recent=1,\"✅ Ready\", true(),\"ℹ️ Ready (no event in 24h)\") | table Scenario Status need | rename need AS \"Logs it needs\"",
+				"extend": "ds_p_checks"
+			}
+		},
+		"ds_p_toggle": {
+			"type": "ds.search",
+			"name": "ds_p_toggle",
+			"options": {
+				"query": "| makeresults | eval Menu=\"▶ Show all checks (10)   ·   Open when something is not ✅. (Click to expand)\" | table Menu"
+			}
+		},
+		"ds_p_close": {
+			"type": "ds.search",
+			"name": "ds_p_close",
+			"options": {
+				"query": "| makeresults | where like(\"$show_chk$\",\"▶%\") | eval Menu=\"▼ Hide the checks   (Click to collapse)\" | table Menu"
+			}
+		},
+		"ds_p_detail": {
+			"type": "ds.chain",
+			"name": "ds_p_detail",
+			"options": {
+				"query": "| where like(\"$show_chk$\",\"▶%\")",
+				"extend": "ds_p_checks"
+			}
+		},
+		"ds_p_logs": {
+			"type": "ds.search",
+			"name": "ds_p_logs",
+			"options": {
+				"query": "search [| makeresults | eval search=if(like(\"$show_chk$\",\"▶%\") AND (\"$chk_no$\"=\"1\" OR \"$chk_no$\"=\"2\"),\"*\",\"cip_sc_none\") | fields search] `cip_sc_traffic` earliest=-15m latest=now | head 300 | `cip_sc_normalize` | eval miss=mvjoin(mvappend(if(isnull(ab_src),\"source IP\",null()), if(isnull(ab_dst),\"destination IP\",null()), if(isnull(ab_dport) AND in(lower(tostring(ab_proto)),\"6\",\"17\",\"tcp\",\"udp\"),\"port\",null()), if(isnull(ab_fw),\"firewall name\",null()), if(isnull(ab_sess),\"session\",null())),\", \"), Note=if(isnull(miss) OR miss=\"\",\"✅ All fields\",\"⚠️ Missing: \".miss), o=if(like(Note,\"✅%\"),1,0), Key=coalesce(ab_src,\"-\").\" → \".coalesce(ab_dst,\"-\").\":\".coalesce(ab_dport,\"-\").\" (proto \".coalesce(ab_proto,\"-\").\")  ·  \".coalesce(ab_fw,\"-\") | sort 0 o - _time | head 20 | append [ search [| makeresults | eval search=if(like(\"$show_chk$\",\"▶%\") AND (\"$chk_no$\"=\"3\"),\"*\",\"cip_sc_none\") | fields search] `cip_sc_dhcp` | head 20 | eval Key=coalesce(dhcp_ip,\"-\").\" → \".coalesce(dhcp_host,\"-\"), Note=if(isnull(dhcp_host),\"⚠️ No PC name\",\"✅ PC name\") ] | append [ search [| makeresults | eval search=if(like(\"$show_chk$\",\"▶%\") AND (\"$chk_no$\"=\"4\" OR \"$chk_no$\"=\"5\" OR \"$chk_no$\"=\"6\" OR \"$chk_no$\"=\"7\"),\"*\",\"cip_sc_none\") | fields search] `cip_sc_threat_logs` earliest=-24h latest=now | head 2000 | `cip_sc_normalize` | `cip_sc_threat_normalize` | where ab_trig=1 AND ((\"$chk_no$\"=\"4\" AND ab_t_kind=\"web\") OR (\"$chk_no$\"=\"5\" AND ab_t_kind=\"av\") OR (\"$chk_no$\"=\"6\" AND ab_t_kind=\"login\") OR \"$chk_no$\"=\"7\") | eval Key=\"PC \".coalesce(ab_src,\"-\").\"  ·  \".case(ab_t_kind=\"login\", coalesce(ab_l_user,\"-\").\" / \".coalesce(ab_l_result,\"-\").\" / \".coalesce(ab_l_method,\"-\").\" → \".coalesce(ab_l_device,\"-\"), true(), ab_t_kind.\" · \".coalesce(ab_t_host,ab_t_url,\"-\").if(isnotnull(ab_t_name),\"  ·  \".ab_t_name,\"\")), Note=case(isnull(ab_src),\"⚠️ No PC IP\", ab_t_kind=\"login\" AND isnull(ab_l_result),\"⚠️ No login result\", true(),\"✅ \".ab_t_kind), o=if(like(Note,\"✅%\"),1,0) | sort 0 o - _time | head 20 ] | append [ search [| makeresults | eval search=if(like(\"$show_chk$\",\"▶%\") AND (\"$chk_no$\"=\"8\"),\"*\",\"cip_sc_none\") | fields search] `cip_sc_defender_alerts` earliest=-7d latest=now | head 20 | eval Key=coalesce(computerDnsName,\"-\").\"  ·  \".coalesce(threatName,title,\"-\"), Note=\"✅ Defender alert\" ] | append [ | rest /servicesNS/-/-/saved/searches splunk_server=local count=0 | where \"$chk_no$\"=\"9\" AND like(\"$show_chk$\",\"▶%\") | rename search AS spl | where match(spl, \"scen_id=\\\"(outbound_riskport|outbound_nonstd_port|phishing_click|malware_outbound|login_outbound)\\\"\") | rex field=spl \"scen_id=\\\"(?<sid>[a-z_]+)\\\"\" | eval Key=title.\"  ·  \".sid.\"  ·  \".if(is_scheduled=1,cron_schedule,\"not scheduled\").\"  ·  \".if(disabled=1,\"disabled\",\"enabled\"), Note=if(is_scheduled=1 AND disabled=0,\"✅ On\",\"⚠️ Off\"), _raw=spl, index=\"saved search\", sourcetype=title ] | append [ search [| makeresults | eval search=if(like(\"$show_chk$\",\"▶%\") AND (\"$chk_no$\"=\"10\"),\"*\",\"cip_sc_none\") | fields search] index=summary source=\"scen_autoblock_eval\" earliest=-7d latest=now | head 20 | eval Key=scen_id.\"  ·  \".rec_type.if(isnotnull(ip),\"  ·  \".ip,\"\").if(rec_type=\"run\",\"  ·  A \".n_a.\" B \".n_b.\" C \".n_c.\" D \".n_d,\"\"), Note=\"✅ Record\" ] | eval Time=if(isnull(_time),\"-\",strftime(_time,\"%m-%d %H:%M:%S\")), Where=coalesce(index,\"-\").\" / \".coalesce(sourcetype,\"-\"), raw=substr(_raw,1,3000) | head 20 | streamstats count AS No | table No Time Where Key Note raw",
+				"queryParameters": {
+					"earliest": "-24h",
+					"latest": "now"
+				}
+			}
+		},
+		"ds_p_list": {
+			"type": "ds.chain",
+			"name": "ds_p_list",
+			"options": {
+				"query": "| table No Time Where Key Note | rename Key AS \"Key values\", Note AS \"Check\"",
+				"extend": "ds_p_logs"
+			}
+		},
+		"ds_p_raw": {
+			"type": "ds.chain",
+			"name": "ds_p_raw",
+			"options": {
+				"query": "| where No=tonumber(\"$log_n$\") | rex field=raw max_match=0 \"(?<kv>[A-Za-z_][\\w\\.]*\\\"?\\s*[=:]\\s*(\\\"[^\\\"]*\\\"|[^,\\s}]+))\" | eval kv=mvappend(\"Full raw=\".raw, kv) | mvexpand kv | head 80 | rex field=kv \"^(?<k>[^=:\\\"]+)\\\"?\\s*[=:]\\s*\\\"?(?<v>.*?)\\\"?$\" | table k v | rename k AS Field, v AS Value",
+				"extend": "ds_p_logs"
+			}
+		},
+		"ds_p_guide": {
+			"type": "ds.search",
+			"name": "ds_p_guide",
+			"options": {
+				"query": "| makeresults count=10 | where like(\"$show_chk$\",\"▶%\") | streamstats count AS n | eval Part=case(n=1,\"① All checks\",n=2,\"① All checks\",n=3,\"① All checks\",n=4,\"① All checks\",n=5,\"① All checks\",n=6,\"① All checks\",n=7,\"② Logs\",n=8,\"② Logs\",n=9,\"② Logs\",n=10,\"How to use\"), Result=case(n=1,\"✅ OK\",n=2,\"⚠️ Fields missing · Some missing · No record\",n=3,\"❌ No logs · None\",n=4,\"ℹ️ None in 24h\",n=5,\"ℹ️ Optional\",n=6,\"— No logs\",n=7,\"✅ All fields · PC name · web · av · login · On · Record\",n=8,\"⚠️ Missing: field name\",n=9,\"⚠️ No PC name · No PC IP · No login result · Off\",n=10,\"① → ② → ③\"), Meaning=case(n=1,\"The logs or settings this check needs were found.\",n=2,\"Found, but not complete. Do what the What to do column says.\",n=3,\"Nothing was found. The scenarios that use it cannot run yet.\",n=4,\"The logs are read, but there was no such event in the last 24 hours. Not an error.\",n=5,\"Not required. With it, Slack shows PC names and the malware scenario also uses Defender.\",n=6,\"Not checked, because there were no logs to check.\",n=7,\"Auto-block can use this log or setting.\",n=8,\"This log has no value for that field. Port is needed only for TCP/UDP (ICMP has no port). Open ③ to find the field name.\",n=9,\"The PC name, PC IP or login result is missing, or the alert is off.\",n=10,\"Click a check in ① to list its logs in ②. Click a log in ② to see its raw fields in ③.\") | table Part Result Meaning"
+			}
+		}
+	},
+	"visualizations": {
+		"md_title": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "# Scenario Auto-Block Status",
+				"fontColor": "#ffffff"
+			}
+		},
+		"md_sub": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "5 scenarios (risky port · non-standard port · phishing · malware · admin login) · Criminal IP check · firewall auto-block · block recommendations",
+				"fontColor": "#c9cdf2",
+				"fontSize": "small"
+			}
+		},
+		"sv_last": {
+			"type": "splunk.singlevalue",
+			"title": "Last record",
+			"dataSources": {
+				"primary": "ds_last"
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"majorColor": "#D1E9F6",
+				"majorFontSize": 24,
+				"sparklineDisplay": "off",
+				"trendDisplay": "off"
+			}
+		},
+		"g_kpi": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"gt_kpi": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "**Overview (selected time range, unique IPs)**",
+				"fontColor": "#ffffff",
+				"fontSize": "small"
+			}
+		},
+		"t_k_block": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#2a2f6c",
+				"strokeColor": "#2a2f6c",
+				"rx": 10
+			}
+		},
+		"k_block": {
+			"type": "splunk.singlevalue",
+			"title": "Auto-blocked IPs (A)",
+			"dataSources": {
+				"primary": "ds_k_block"
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"majorColor": "#EECAD5",
+				"majorFontSize": 56,
+				"showSparklineAreaGraph": true,
+				"sparklineDisplay": "below",
+				"sparklineStrokeColor": "#EECAD5",
+				"trendDisplay": "off"
+			}
+		},
+		"t_k_rec": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#2a2f6c",
+				"strokeColor": "#2a2f6c",
+				"rx": 10
+			}
+		},
+		"k_rec": {
+			"type": "splunk.singlevalue",
+			"title": "Recommended IPs (B)",
+			"dataSources": {
+				"primary": "ds_k_rec"
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"majorColor": "#9fd3f5",
+				"majorFontSize": 56,
+				"showSparklineAreaGraph": true,
+				"sparklineDisplay": "below",
+				"sparklineStrokeColor": "#9fd3f5",
+				"trendDisplay": "off"
+			}
+		},
+		"t_k_fail": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#2a2f6c",
+				"strokeColor": "#2a2f6c",
+				"rx": 10
+			}
+		},
+		"k_fail": {
+			"type": "splunk.singlevalue",
+			"title": "Block failed IPs",
+			"dataSources": {
+				"primary": "ds_k_fail"
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"majorColor": "> majorValue | rangeValue(failColor)",
+				"majorFontSize": 56,
+				"showSparklineAreaGraph": true,
+				"sparklineDisplay": "below",
+				"sparklineStrokeColor": "#ff6b6b",
+				"trendDisplay": "off"
+			},
+			"context": {
+				"failColor": [
+					{
+						"to": 1,
+						"value": "#F6EACB"
+					},
+					{
+						"from": 1,
+						"value": "#ff6b6b"
+					}
+				]
+			}
+		},
+		"t_k_exc": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#2a2f6c",
+				"strokeColor": "#2a2f6c",
+				"rx": 10
+			}
+		},
+		"k_exc": {
+			"type": "splunk.singlevalue",
+			"title": "White list IPs (C)",
+			"dataSources": {
+				"primary": "ds_k_exc"
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"majorColor": "#F6EACB",
+				"majorFontSize": 56,
+				"showSparklineAreaGraph": true,
+				"sparklineDisplay": "below",
+				"sparklineStrokeColor": "#F6EACB",
+				"trendDisplay": "off"
+			}
+		},
+		"g_donut": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"gt_donut": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "**Risky IPs by result (CIP risky, unique IPs)**",
+				"fontColor": "#ffffff",
+				"fontSize": "small"
+			}
+		},
+		"viz_donut": {
+			"type": "splunk.pie",
+			"dataSources": {
+				"primary": "ds_donut"
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"showDonutHole": true,
+				"labelDisplay": "off",
+				"legendDisplay": "off",
+				"seriesColors": [
+					"#e0789f",
+					"#ff6b6b",
+					"#5aa6e6",
+					"#d9a93a"
+				],
+				"seriesColorsByField": {
+					"Auto-blocked": "#e0789f",
+					"Block failed": "#ff6b6b",
+					"Recommended": "#5aa6e6",
+					"White list": "#d9a93a"
+				}
+			}
+		},
+		"sv_ratio": {
+			"type": "splunk.singlevalue",
+			"dataSources": {
+				"primary": "ds_ratio"
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"majorColor": "#ffffff",
+				"majorFontSize": 22,
+				"sparklineDisplay": "off",
+				"trendDisplay": "off",
+				"underLabel": "",
+				"underLabelFontSize": 11,
+				"unit": "%",
+				"unitPosition": "after"
+			}
+		},
+		"lg0": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#e0789f",
+				"strokeColor": "#e0789f",
+				"rx": 3
+			}
+		},
+		"lgt0": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "Auto-blocked (A)",
+				"fontColor": "#c9cdf2",
+				"fontSize": "small"
+			}
+		},
+		"lg1": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#ff6b6b",
+				"strokeColor": "#ff6b6b",
+				"rx": 3
+			}
+		},
+		"lgt1": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "Block failed",
+				"fontColor": "#c9cdf2",
+				"fontSize": "small"
+			}
+		},
+		"lg2": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#5aa6e6",
+				"strokeColor": "#5aa6e6",
+				"rx": 3
+			}
+		},
+		"lgt2": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "Recommended (B)",
+				"fontColor": "#c9cdf2",
+				"fontSize": "small"
+			}
+		},
+		"lg3": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#d9a93a",
+				"strokeColor": "#d9a93a",
+				"rx": 3
+			}
+		},
+		"lgt3": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "White list (C)",
+				"fontColor": "#c9cdf2",
+				"fontSize": "small"
+			}
+		},
+		"g_scen": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"gt_scen": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "**By scenario (unique IPs)**",
+				"fontColor": "#ffffff",
+				"fontSize": "small"
+			}
+		},
+		"viz_by_scen": {
+			"type": "splunk.column",
+			"title": "",
+			"dataSources": {
+				"primary": "ds_by_scen"
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"legendDisplay": "right",
+				"seriesColorsByField": {
+					"Blocked": "#e0789f",
+					"Recommended": "#5aa6e6",
+					"White list": "#d9a93a"
+				},
+				"stackMode": "auto",
+				"seriesSpacing": 5,
+				"xAxisTitleVisibility": "hide",
+				"yAxisTitleVisibility": "hide"
+			}
+		},
+		"g_trend": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"gt_trend": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "**Daily trend (unique IPs)**",
+				"fontColor": "#ffffff",
+				"fontSize": "small"
+			}
+		},
+		"viz_trend": {
+			"type": "splunk.column",
+			"title": "",
+			"dataSources": {
+				"primary": "ds_trend"
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"legendDisplay": "right",
+				"seriesColorsByField": {
+					"Blocked": "#e0789f",
+					"Recommended": "#5aa6e6"
+				},
+				"stackMode": "auto",
+				"seriesSpacing": 5,
+				"xAxisTitleVisibility": "hide",
+				"yAxisTitleVisibility": "hide"
+			}
+		},
+		"g_hist": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"gt_hist": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "**Auto-block history (A: CIP risky + scenario condition met)**",
+				"fontColor": "#ffffff",
+				"fontSize": "small"
+			}
+		},
+		"tbl_history": {
+			"type": "splunk.table",
+			"title": "",
+			"dataSources": {
+				"primary": "ds_history"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				},
+				"resultColors": [
+					{
+						"match": "Blocked",
+						"value": "#EECAD5"
+					},
+					{
+						"match": "Block failed",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "Needs check",
+						"value": "#F6EACB"
+					}
+				]
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 8,
+				"columnFormat": {
+					"Result": {
+						"data": "> table | seriesByName(\"Result\") | formatByType(strFmt)",
+						"rowColors": "> table | seriesByName(\"Result\") | matchValue(resultColors)"
+					}
+				},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			}
+		},
+		"g_rec": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"gt_rec": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "**Block recommendations by risky IP (B: CIP risky, scenario condition not met · not blocked, review and decide) · click an IP to see its PCs**",
+				"fontColor": "#ffffff",
+				"fontSize": "small"
+			}
+		},
+		"tbl_recommend": {
+			"type": "splunk.table",
+			"title": "",
+			"dataSources": {
+				"primary": "ds_recommend"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				},
+				"recColors": [
+					{
+						"match": "Not blocked",
+						"value": "#9fd3f5"
+					},
+					{
+						"match": "Blocked later",
+						"value": "#EECAD5"
+					}
+				]
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 8,
+				"columnFormat": {
+					"Status": {
+						"data": "> table | seriesByName(\"Status\") | formatByType(strFmt)",
+						"rowColors": "> table | seriesByName(\"Status\") | matchValue(recColors)"
+					}
+				},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			},
+			"eventHandlers": [
+				{
+					"type": "drilldown.setToken",
+					"options": {
+						"tokens": [
+							{
+								"token": "rec_ip",
+								"key": "row.Risky IP.value"
+							}
+						]
+					}
+				}
+			]
+		},
+		"g_recd": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"gt_recd": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "**PCs and scenarios of the selected risky IP (click an IP above)**",
+				"fontColor": "#ffffff",
+				"fontSize": "small"
+			}
+		},
+		"tbl_rec_detail": {
+			"type": "splunk.table",
+			"title": "Risky IP $rec_ip$",
+			"dataSources": {
+				"primary": "ds_rec_detail"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				}
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 8,
+				"columnFormat": {},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			}
+		},
+		"h_title": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "# Health · 5 scenario alerts",
+				"fontColor": "#ffffff"
+			}
+		},
+		"h_sub": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "Are the 5 alerts running every 10 minutes, did every result reach Shuffle, and are their logs coming in? (last 24 hours)",
+				"fontColor": "#c9cdf2",
+				"fontSize": "small"
+			}
+		},
+		"g_h_kpi": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"gt_h_kpi": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "**Status**",
+				"fontColor": "#ffffff",
+				"fontSize": "small"
+			}
+		},
+		"h_t1": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#2a2f6c",
+				"strokeColor": "#2a2f6c",
+				"rx": 10
+			}
+		},
+		"h_state": {
+			"type": "splunk.singlevalue",
+			"title": "Alert status",
+			"dataSources": {
+				"primary": "ds_h_state"
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"majorColor": "> majorValue | matchValue(stateColors)",
+				"majorFontSize": 44,
+				"sparklineDisplay": "off",
+				"trendDisplay": "off"
+			},
+			"context": {
+				"stateColors": [
+					{
+						"match": "OK",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "Check",
+						"value": "#f2b866"
+					},
+					{
+						"match": "Problem",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "No alerts",
+						"value": "#9aa0c8"
+					}
+				]
+			}
+		},
+		"h_t2": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#2a2f6c",
+				"strokeColor": "#2a2f6c",
+				"rx": 10
+			}
+		},
+		"h_found": {
+			"type": "splunk.singlevalue",
+			"title": "Scenario alerts found",
+			"dataSources": {
+				"primary": "ds_h_found"
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"majorColor": "#D1E9F6",
+				"majorFontSize": 44,
+				"sparklineDisplay": "off",
+				"trendDisplay": "off"
+			}
+		},
+		"h_t4": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#2a2f6c",
+				"strokeColor": "#2a2f6c",
+				"rx": 10
+			}
+		},
+		"h_logs": {
+			"type": "splunk.singlevalue",
+			"title": "Log check (hourly, details at the bottom)",
+			"dataSources": {
+				"primary": "ds_h_log_state"
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"majorColor": "> majorValue | matchValue(stateColors)",
+				"majorFontSize": 44,
+				"sparklineDisplay": "off",
+				"trendDisplay": "off"
+			},
+			"context": {
+				"stateColors": [
+					{
+						"match": "OK",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "Warning",
+						"value": "#f2b866"
+					},
+					{
+						"match": "Problem",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "Stopped",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "No record",
+						"value": "#9aa0c8"
+					}
+				]
+			}
+		},
+		"h_t3": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#2a2f6c",
+				"strokeColor": "#2a2f6c",
+				"rx": 10
+			}
+		},
+		"h_cip": {
+			"type": "splunk.singlevalue",
+			"title": "CIP lookup failures (24h) · click for details",
+			"dataSources": {
+				"primary": "ds_h_cipfail"
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"majorColor": "#F6EACB",
+				"majorFontSize": 44,
+				"sparklineDisplay": "off",
+				"trendDisplay": "off"
+			},
+			"eventHandlers": [
+				{
+					"type": "drilldown.setToken",
+					"options": {
+						"tokens": [
+							{
+								"token": "cip_show",
+								"key": "value"
+							}
+						]
+					}
+				}
+			]
+		},
+		"g_h_cf": {
+			"type": "splunk.rectangle",
+			"dataSources": {
+				"primary": "ds_h_is_open"
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			},
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#f2b866",
+				"rx": 10
+			}
+		},
+		"h_cf_close": {
+			"type": "splunk.table",
+			"dataSources": {
+				"primary": "ds_h_cf_close"
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			},
+			"context": {
+				"rowBg": [
+					"#4b3fb0",
+					"#4b3fb0"
+				],
+				"strFmt": {
+					"string": {}
+				}
+			},
+			"options": {
+				"backgroundColor": "#22265a",
+				"headerVisibility": "none",
+				"count": 1,
+				"tableFormat": {
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				},
+				"columnFormat": {
+					"Menu": {
+						"data": "> table | seriesByName(\"Menu\") | formatByType(strFmt)"
+					}
+				}
+			},
+			"eventHandlers": [
+				{
+					"type": "drilldown.setToken",
+					"options": {
+						"tokens": [
+							{
+								"token": "cip_show",
+								"key": "row.Menu.value"
+							}
+						]
+					}
+				}
+			]
+		},
+		"h_cipfails": {
+			"type": "splunk.table",
+			"title": "",
+			"dataSources": {
+				"primary": "ds_h_cipfail_list"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				}
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 5,
+				"columnFormat": {},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			}
+		},
+		"g_h_alerts_c": {
+			"type": "splunk.rectangle",
+			"dataSources": {
+				"primary": "ds_h_is_closed"
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			},
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"h_alerts_c": {
+			"type": "splunk.table",
+			"title": "Scenario alerts (found by scen_id in the alert SPL)",
+			"dataSources": {
+				"primary": "ds_h_alerts_c"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				},
+				"verdictColors": [
+					{
+						"match": "OK",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "Disabled",
+						"value": "#9aa0c8"
+					},
+					{
+						"match": "Not scheduled",
+						"value": "#f2b866"
+					},
+					{
+						"match": "No webhook",
+						"value": "#f2b866"
+					},
+					{
+						"match": "Not running",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "Search failing",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "Shuffle not recording",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "No scheduler log",
+						"value": "#f2b866"
+					}
+				]
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 6,
+				"columnFormat": {
+					"Verdict": {
+						"data": "> table | seriesByName(\"Verdict\") | formatByType(strFmt)",
+						"rowColors": "> table | seriesByName(\"Verdict\") | matchValue(verdictColors)"
+					}
+				},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			}
+		},
+		"g_h_alerts_o": {
+			"type": "splunk.rectangle",
+			"dataSources": {
+				"primary": "ds_h_is_open"
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			},
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"h_alerts_o": {
+			"type": "splunk.table",
+			"title": "Scenario alerts (found by scen_id in the alert SPL)",
+			"dataSources": {
+				"primary": "ds_h_alerts_o"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				},
+				"verdictColors": [
+					{
+						"match": "OK",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "Disabled",
+						"value": "#9aa0c8"
+					},
+					{
+						"match": "Not scheduled",
+						"value": "#f2b866"
+					},
+					{
+						"match": "No webhook",
+						"value": "#f2b866"
+					},
+					{
+						"match": "Not running",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "Search failing",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "Shuffle not recording",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "No scheduler log",
+						"value": "#f2b866"
+					}
+				]
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 6,
+				"columnFormat": {
+					"Verdict": {
+						"data": "> table | seriesByName(\"Verdict\") | formatByType(strFmt)",
+						"rowColors": "> table | seriesByName(\"Verdict\") | matchValue(verdictColors)"
+					}
+				},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			}
+		},
+		"g_h_runs_c": {
+			"type": "splunk.rectangle",
+			"dataSources": {
+				"primary": "ds_h_is_closed"
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			},
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"h_runs_c": {
+			"type": "splunk.table",
+			"title": "Shuffle records (last 24 hours, one row per alert sent to Shuffle)",
+			"dataSources": {
+				"primary": "ds_h_runs_c"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				}
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 10,
+				"columnFormat": {},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			}
+		},
+		"g_h_runs_o": {
+			"type": "splunk.rectangle",
+			"dataSources": {
+				"primary": "ds_h_is_open"
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			},
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"h_runs_o": {
+			"type": "splunk.table",
+			"title": "Shuffle records (last 24 hours, one row per alert sent to Shuffle)",
+			"dataSources": {
+				"primary": "ds_h_runs_o"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				}
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 10,
+				"columnFormat": {},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			}
+		},
+		"g_h_guide_c": {
+			"type": "splunk.rectangle",
+			"dataSources": {
+				"primary": "ds_h_is_closed"
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			},
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"h_guide_c": {
+			"type": "splunk.table",
+			"title": "How to read the verdict",
+			"dataSources": {
+				"primary": "ds_h_guide_c"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				},
+				"verdictColors": [
+					{
+						"match": "OK",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "Disabled",
+						"value": "#9aa0c8"
+					},
+					{
+						"match": "Not scheduled",
+						"value": "#f2b866"
+					},
+					{
+						"match": "No webhook",
+						"value": "#f2b866"
+					},
+					{
+						"match": "Not running",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "Search failing",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "Shuffle not recording",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "No scheduler log",
+						"value": "#f2b866"
+					}
+				]
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 8,
+				"columnFormat": {
+					"Verdict": {
+						"data": "> table | seriesByName(\"Verdict\") | formatByType(strFmt)",
+						"rowColors": "> table | seriesByName(\"Verdict\") | matchValue(verdictColors)"
+					}
+				},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			}
+		},
+		"g_h_guide_o": {
+			"type": "splunk.rectangle",
+			"dataSources": {
+				"primary": "ds_h_is_open"
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			},
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"h_guide_o": {
+			"type": "splunk.table",
+			"title": "How to read the verdict",
+			"dataSources": {
+				"primary": "ds_h_guide_o"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				},
+				"verdictColors": [
+					{
+						"match": "OK",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "Disabled",
+						"value": "#9aa0c8"
+					},
+					{
+						"match": "Not scheduled",
+						"value": "#f2b866"
+					},
+					{
+						"match": "No webhook",
+						"value": "#f2b866"
+					},
+					{
+						"match": "Not running",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "Search failing",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "Shuffle not recording",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "No scheduler log",
+						"value": "#f2b866"
+					}
+				]
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 8,
+				"columnFormat": {
+					"Verdict": {
+						"data": "> table | seriesByName(\"Verdict\") | formatByType(strFmt)",
+						"rowColors": "> table | seriesByName(\"Verdict\") | matchValue(verdictColors)"
+					}
+				},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			}
+		},
+		"g_h_loghist_c": {
+			"type": "splunk.rectangle",
+			"dataSources": {
+				"primary": "ds_h_is_closed"
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			},
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"h_loghist_c": {
+			"type": "splunk.table",
+			"title": "Log check (last 24 hours, one row per hour): are the logs of the 5 scenarios coming in with their fields? (traffic = last 15 minutes)",
+			"dataSources": {
+				"primary": "ds_h_log_hist_c"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				},
+				"logColors": [
+					{
+						"match": "OK",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "Warning",
+						"value": "#f2b866"
+					},
+					{
+						"match": "Problem",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "Stopped",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "No record",
+						"value": "#9aa0c8"
+					}
+				]
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 8,
+				"columnFormat": {
+					"Status": {
+						"data": "> table | seriesByName(\"Status\") | formatByType(strFmt)",
+						"rowColors": "> table | seriesByName(\"Status\") | matchValue(logColors)"
+					}
+				},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			}
+		},
+		"g_h_loghist_o": {
+			"type": "splunk.rectangle",
+			"dataSources": {
+				"primary": "ds_h_is_open"
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			},
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"h_loghist_o": {
+			"type": "splunk.table",
+			"title": "Log check (last 24 hours, one row per hour): are the logs of the 5 scenarios coming in with their fields? (traffic = last 15 minutes)",
+			"dataSources": {
+				"primary": "ds_h_log_hist_o"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				},
+				"logColors": [
+					{
+						"match": "OK",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "Warning",
+						"value": "#f2b866"
+					},
+					{
+						"match": "Problem",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "Stopped",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "No record",
+						"value": "#9aa0c8"
+					}
+				]
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 8,
+				"columnFormat": {
+					"Status": {
+						"data": "> table | seriesByName(\"Status\") | formatByType(strFmt)",
+						"rowColors": "> table | seriesByName(\"Status\") | matchValue(logColors)"
+					}
+				},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			}
+		},
+		"g_h_lguide_c": {
+			"type": "splunk.rectangle",
+			"dataSources": {
+				"primary": "ds_h_is_closed"
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			},
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"h_lguide_c": {
+			"type": "splunk.table",
+			"title": "How to read the log check",
+			"dataSources": {
+				"primary": "ds_h_lguide_c"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				},
+				"lguideColors": [
+					{
+						"match": "OK",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "Warning",
+						"value": "#f2b866"
+					},
+					{
+						"match": "Problem",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "Stopped",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "No record",
+						"value": "#9aa0c8"
+					}
+				]
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 5,
+				"columnFormat": {
+					"Status": {
+						"data": "> table | seriesByName(\"Status\") | formatByType(strFmt)",
+						"rowColors": "> table | seriesByName(\"Status\") | matchValue(lguideColors)"
+					}
+				},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			}
+		},
+		"g_h_lguide_o": {
+			"type": "splunk.rectangle",
+			"dataSources": {
+				"primary": "ds_h_is_open"
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			},
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"h_lguide_o": {
+			"type": "splunk.table",
+			"title": "How to read the log check",
+			"dataSources": {
+				"primary": "ds_h_lguide_o"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				},
+				"lguideColors": [
+					{
+						"match": "OK",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "Warning",
+						"value": "#f2b866"
+					},
+					{
+						"match": "Problem",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "Stopped",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "No record",
+						"value": "#9aa0c8"
+					}
+				]
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 5,
+				"columnFormat": {
+					"Status": {
+						"data": "> table | seriesByName(\"Status\") | formatByType(strFmt)",
+						"rowColors": "> table | seriesByName(\"Status\") | matchValue(lguideColors)"
+					}
+				},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			}
+		},
+		"p_bg": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#353b82",
+				"rx": 10
+			}
+		},
+		"p_title": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## Scenario auto-block setup\nChecks whether the logs, alerts and Shuffle records that the 5 scenarios need are ready.",
+				"fontColor": "#ffffff"
+			}
+		},
+		"p_card_bg": {
+			"type": "splunk.rectangle",
+			"dataSources": {
+				"primary": "ds_p_card"
+			},
+			"context": {
+				"stateColors": [
+					{
+						"match": "ok",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "logs",
+						"value": "#f28b82"
+					},
+					{
+						"match": "fields",
+						"value": "#f2b866"
+					},
+					{
+						"match": "alerts",
+						"value": "#f2b866"
+					},
+					{
+						"match": "shuffle",
+						"value": "#f2b866"
+					}
+				]
+			},
+			"options": {
+				"fillColor": "#2a2f6c",
+				"strokeColor": "> primary | seriesByName(\"state\") | lastPoint() | matchValue(stateColors)",
+				"strokeWidth": 2,
+				"rx": 12
+			}
+		},
+		"p_card_title": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "## $prep:result.title$",
+				"fontColor": "#ffffff"
+			}
+		},
+		"p_card": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "$prep:result.desc$",
+				"fontColor": "#d6d9f5"
+			}
+		},
+		"p_info_bg0": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#3a3f80",
+				"strokeWidth": 1,
+				"rx": 10
+			}
+		},
+		"p_info_l0": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "Logs read",
+				"fontColor": "#9aa0c8",
+				"fontSize": "small"
+			}
+		},
+		"p_info_v0": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "**$prep:result.logs$**",
+				"fontColor": "#ffffff"
+			}
+		},
+		"p_info_bg1": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#22265a",
+				"strokeColor": "#3a3f80",
+				"strokeWidth": 1,
+				"rx": 10
+			}
+		},
+		"p_info_l1": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "Alerts and Shuffle",
+				"fontColor": "#9aa0c8",
+				"fontSize": "small"
+			}
+		},
+		"p_info_v1": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "**$prep:result.run$**",
+				"fontColor": "#ffffff"
+			}
+		},
+		"p_card_line": {
+			"type": "splunk.rectangle",
+			"options": {
+				"fillColor": "#3a3f80",
+				"strokeColor": "#3a3f80",
+				"strokeWidth": 0
+			}
+		},
+		"p_next_label": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "**Next step**",
+				"fontColor": "#9aa0c8"
+			}
+		},
+		"p_next": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "$prep:result.next$",
+				"fontColor": "#ffffff"
+			}
+		},
+		"p_btn_bg": {
+			"type": "splunk.rectangle",
+			"dataSources": {
+				"primary": "ds_p_card"
+			},
+			"context": {
+				"stateColors": [
+					{
+						"match": "ok",
+						"value": "#2f8f5b"
+					},
+					{
+						"match": "logs",
+						"value": "#a8453f"
+					},
+					{
+						"match": "fields",
+						"value": "#a8701f"
+					},
+					{
+						"match": "alerts",
+						"value": "#a8701f"
+					},
+					{
+						"match": "shuffle",
+						"value": "#a8701f"
+					}
+				]
+			},
+			"options": {
+				"fillColor": "> primary | seriesByName(\"state\") | lastPoint() | matchValue(stateColors)",
+				"strokeColor": "#ffffff",
+				"strokeWidth": 0,
+				"rx": 22
+			}
+		},
+		"p_btn": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "**$prep:result.btn$**",
+				"fontColor": "#ffffff"
+			}
+		},
+		"p_card_tech": {
+			"type": "splunk.markdown",
+			"options": {
+				"markdown": "ⓘ Info  :  traffic logs last 15 min · security logs last 24h · DHCP and Defender last 7 days · ℹ️ means none found recently or optional (not an error)",
+				"fontColor": "#9aa0c8",
+				"fontSize": "small"
+			}
+		},
+		"p_scen": {
+			"type": "splunk.table",
+			"title": "Scenarios",
+			"dataSources": {
+				"primary": "ds_p_scen"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				},
+				"scColors": [
+					{
+						"match": "✅ Ready",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "ℹ️ Ready (no event in 24h)",
+						"value": "#9fd3f5"
+					},
+					{
+						"match": "⚠️ Fields missing",
+						"value": "#f2b866"
+					},
+					{
+						"match": "❌ Not ready",
+						"value": "#ff6b6b"
+					}
+				]
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 5,
+				"columnFormat": {
+					"Status": {
+						"data": "> table | seriesByName(\"Status\") | formatByType(strFmt)",
+						"rowColors": "> table | seriesByName(\"Status\") | matchValue(scColors)"
+					}
+				},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			}
+		},
+		"p_toggle": {
+			"type": "splunk.table",
+			"dataSources": {
+				"primary": "ds_p_toggle"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				}
+			},
+			"options": {
+				"backgroundColor": "#22265a",
+				"headerVisibility": "none",
+				"count": 1,
+				"tableFormat": {
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				},
+				"columnFormat": {
+					"Menu": {
+						"data": "> table | seriesByName(\"Menu\") | formatByType(strFmt)"
+					}
+				}
+			},
+			"eventHandlers": [
+				{
+					"type": "drilldown.setToken",
+					"options": {
+						"tokens": [
+							{
+								"token": "show_chk",
+								"key": "row.Menu.value"
+							},
+							{
+								"token": "chk_no",
+								"key": "row.Menu.value"
+							},
+							{
+								"token": "log_n",
+								"key": "row.Menu.value"
+							}
+						]
+					}
+				}
+			]
+		},
+		"p_close": {
+			"type": "splunk.table",
+			"dataSources": {
+				"primary": "ds_p_close"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				}
+			},
+			"options": {
+				"backgroundColor": "#22265a",
+				"headerVisibility": "none",
+				"count": 1,
+				"tableFormat": {
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				},
+				"columnFormat": {
+					"Menu": {
+						"data": "> table | seriesByName(\"Menu\") | formatByType(strFmt)"
+					}
+				}
+			},
+			"eventHandlers": [
+				{
+					"type": "drilldown.setToken",
+					"options": {
+						"tokens": [
+							{
+								"token": "show_chk",
+								"key": "row.Menu.value"
+							},
+							{
+								"token": "chk_no",
+								"key": "row.Menu.value"
+							},
+							{
+								"token": "log_n",
+								"key": "row.Menu.value"
+							}
+						]
+					}
+				}
+			],
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			}
+		},
+		"p_guide": {
+			"type": "splunk.table",
+			"title": "How to read the results",
+			"dataSources": {
+				"primary": "ds_p_guide"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				},
+				"guideColors": [
+					{
+						"match": "✅ OK",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "⚠️ Fields missing · Some missing · No record",
+						"value": "#f2b866"
+					},
+					{
+						"match": "❌ No logs · None",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "ℹ️ None in 24h",
+						"value": "#9aa0c8"
+					},
+					{
+						"match": "ℹ️ Optional",
+						"value": "#9aa0c8"
+					},
+					{
+						"match": "— No logs",
+						"value": "#9aa0c8"
+					},
+					{
+						"match": "✅ All fields · PC name · web · av · login · On · Record",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "⚠️ Missing: field name",
+						"value": "#f2b866"
+					},
+					{
+						"match": "⚠️ No PC name · No PC IP · No login result · Off",
+						"value": "#f2b866"
+					},
+					{
+						"match": "① → ② → ③",
+						"value": "#9fd3f5"
+					}
+				]
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 10,
+				"columnFormat": {
+					"Result": {
+						"data": "> table | seriesByName(\"Result\") | formatByType(strFmt)",
+						"rowColors": "> table | seriesByName(\"Result\") | matchValue(guideColors)"
+					}
+				},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			}
+		},
+		"p_checks": {
+			"type": "splunk.table",
+			"title": "① All checks  (click a row to see its logs below)",
+			"dataSources": {
+				"primary": "ds_p_detail"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				},
+				"statColors": [
+					{
+						"match": "✅ OK",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "⚠️ Fields missing",
+						"value": "#f2b866"
+					},
+					{
+						"match": "⚠️ Some missing",
+						"value": "#f2b866"
+					},
+					{
+						"match": "⚠️ No record",
+						"value": "#f2b866"
+					},
+					{
+						"match": "❌ No logs",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "❌ None",
+						"value": "#ff6b6b"
+					},
+					{
+						"match": "ℹ️ Optional",
+						"value": "#9aa0c8"
+					},
+					{
+						"match": "ℹ️ None in 24h",
+						"value": "#9aa0c8"
+					},
+					{
+						"match": "— No logs",
+						"value": "#9aa0c8"
+					}
+				]
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 10,
+				"columnFormat": {
+					"Status": {
+						"data": "> table | seriesByName(\"Status\") | formatByType(strFmt)",
+						"rowColors": "> table | seriesByName(\"Status\") | matchValue(statColors)"
+					}
+				},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			},
+			"eventHandlers": [
+				{
+					"type": "drilldown.setToken",
+					"options": {
+						"tokens": [
+							{
+								"token": "chk_no",
+								"key": "row.No.value"
+							},
+							{
+								"token": "log_n",
+								"key": "row.Check.value"
+							}
+						]
+					}
+				}
+			]
+		},
+		"p_list": {
+			"type": "splunk.table",
+			"title": "② Logs of this check  (latest 20, problems first · click a row to see the raw log)",
+			"dataSources": {
+				"primary": "ds_p_list"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				},
+				"logColors": [
+					{
+						"match": "✅ All fields",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "✅ PC name",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "✅ web",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "✅ av",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "✅ login",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "✅ Defender alert",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "✅ On",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "✅ Record",
+						"value": "#7fd6a4"
+					},
+					{
+						"match": "⚠️ No PC name",
+						"value": "#f2b866"
+					},
+					{
+						"match": "⚠️ No PC IP",
+						"value": "#f2b866"
+					},
+					{
+						"match": "⚠️ No login result",
+						"value": "#f2b866"
+					},
+					{
+						"match": "⚠️ Off",
+						"value": "#f2b866"
+					}
+				]
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 20,
+				"columnFormat": {
+					"Check": {
+						"data": "> table | seriesByName(\"Check\") | formatByType(strFmt)",
+						"rowColors": "> table | seriesByName(\"Check\") | matchValue(logColors)"
+					}
+				},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			},
+			"eventHandlers": [
+				{
+					"type": "drilldown.setToken",
+					"options": {
+						"tokens": [
+							{
+								"token": "log_n",
+								"key": "row.No.value"
+							}
+						]
+					}
+				}
+			]
+		},
+		"p_raw": {
+			"type": "splunk.table",
+			"title": "③ Raw log (No. $log_n$)",
+			"dataSources": {
+				"primary": "ds_p_raw"
+			},
+			"context": {
+				"rowBg": [
+					"#22265a",
+					"#272c66"
+				],
+				"strFmt": {
+					"string": {}
+				}
+			},
+			"options": {
+				"backgroundColor": "transparent",
+				"count": 80,
+				"columnFormat": {},
+				"tableFormat": {
+					"headerBackgroundColor": "#4b3fb0",
+					"headerColor": "#ffffff",
+					"rowBackgroundColors": "> table | seriesByIndex(0) | pick(rowBg)"
+				}
+			},
+			"containerOptions": {
+				"visibility": {
+					"hideWhenNoData": true
+				}
+			}
+		}
+	},
+	"layout": {
+		"globalInputs": [
+			"input_time",
+			"input_scen"
+		],
+		"tabs": {
+			"items": [
+				{
+					"label": "Overview",
+					"layoutId": "layout_1"
+				},
+				{
+					"label": "Health",
+					"layoutId": "layout_2"
+				},
+				{
+					"label": "Setup",
+					"layoutId": "layout_3"
+				}
+			]
+		},
+		"layoutDefinitions": {
+			"layout_1": {
+				"type": "absolute",
+				"structure": [
+					{
+						"item": "md_title",
+						"type": "block",
+						"position": {
+							"x": 24,
+							"y": 14,
+							"w": 1000,
+							"h": 50
+						}
+					},
+					{
+						"item": "md_sub",
+						"type": "block",
+						"position": {
+							"x": 28,
+							"y": 62,
+							"w": 1100,
+							"h": 26
+						}
+					},
+					{
+						"item": "sv_last",
+						"type": "block",
+						"position": {
+							"x": 1220,
+							"y": 10,
+							"w": 200,
+							"h": 80
+						}
+					},
+					{
+						"item": "g_kpi",
+						"type": "block",
+						"position": {
+							"x": 20,
+							"y": 100,
+							"w": 900,
+							"h": 230
+						}
+					},
+					{
+						"item": "gt_kpi",
+						"type": "block",
+						"position": {
+							"x": 38,
+							"y": 110,
+							"w": 864,
+							"h": 30
+						}
+					},
+					{
+						"item": "t_k_block",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 144,
+							"w": 210,
+							"h": 172
+						}
+					},
+					{
+						"item": "k_block",
+						"type": "block",
+						"position": {
+							"x": 42,
+							"y": 148,
+							"w": 198,
+							"h": 164
+						}
+					},
+					{
+						"item": "t_k_rec",
+						"type": "block",
+						"position": {
+							"x": 254,
+							"y": 144,
+							"w": 210,
+							"h": 172
+						}
+					},
+					{
+						"item": "k_rec",
+						"type": "block",
+						"position": {
+							"x": 260,
+							"y": 148,
+							"w": 198,
+							"h": 164
+						}
+					},
+					{
+						"item": "t_k_fail",
+						"type": "block",
+						"position": {
+							"x": 472,
+							"y": 144,
+							"w": 210,
+							"h": 172
+						}
+					},
+					{
+						"item": "k_fail",
+						"type": "block",
+						"position": {
+							"x": 478,
+							"y": 148,
+							"w": 198,
+							"h": 164
+						}
+					},
+					{
+						"item": "t_k_exc",
+						"type": "block",
+						"position": {
+							"x": 690,
+							"y": 144,
+							"w": 210,
+							"h": 172
+						}
+					},
+					{
+						"item": "k_exc",
+						"type": "block",
+						"position": {
+							"x": 696,
+							"y": 148,
+							"w": 198,
+							"h": 164
+						}
+					},
+					{
+						"item": "g_donut",
+						"type": "block",
+						"position": {
+							"x": 930,
+							"y": 100,
+							"w": 490,
+							"h": 230
+						}
+					},
+					{
+						"item": "gt_donut",
+						"type": "block",
+						"position": {
+							"x": 948,
+							"y": 110,
+							"w": 454,
+							"h": 30
+						}
+					},
+					{
+						"item": "viz_donut",
+						"type": "block",
+						"position": {
+							"x": 950,
+							"y": 130,
+							"w": 178,
+							"h": 180
+						}
+					},
+					{
+						"item": "sv_ratio",
+						"type": "block",
+						"position": {
+							"x": 1000,
+							"y": 190,
+							"w": 80,
+							"h": 66
+						}
+					},
+					{
+						"item": "lg0",
+						"type": "block",
+						"position": {
+							"x": 1170,
+							"y": 170,
+							"w": 14,
+							"h": 14
+						}
+					},
+					{
+						"item": "lgt0",
+						"type": "block",
+						"position": {
+							"x": 1190,
+							"y": 166,
+							"w": 210,
+							"h": 20
+						}
+					},
+					{
+						"item": "lg1",
+						"type": "block",
+						"position": {
+							"x": 1170,
+							"y": 205,
+							"w": 14,
+							"h": 14
+						}
+					},
+					{
+						"item": "lgt1",
+						"type": "block",
+						"position": {
+							"x": 1190,
+							"y": 201,
+							"w": 210,
+							"h": 20
+						}
+					},
+					{
+						"item": "lg2",
+						"type": "block",
+						"position": {
+							"x": 1170,
+							"y": 240,
+							"w": 14,
+							"h": 14
+						}
+					},
+					{
+						"item": "lgt2",
+						"type": "block",
+						"position": {
+							"x": 1190,
+							"y": 236,
+							"w": 210,
+							"h": 20
+						}
+					},
+					{
+						"item": "lg3",
+						"type": "block",
+						"position": {
+							"x": 1170,
+							"y": 275,
+							"w": 14,
+							"h": 14
+						}
+					},
+					{
+						"item": "lgt3",
+						"type": "block",
+						"position": {
+							"x": 1190,
+							"y": 271,
+							"w": 210,
+							"h": 20
+						}
+					},
+					{
+						"item": "g_scen",
+						"type": "block",
+						"position": {
+							"x": 20,
+							"y": 345,
+							"w": 690,
+							"h": 330
+						}
+					},
+					{
+						"item": "gt_scen",
+						"type": "block",
+						"position": {
+							"x": 38,
+							"y": 355,
+							"w": 654,
+							"h": 30
+						}
+					},
+					{
+						"item": "viz_by_scen",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 385,
+							"w": 658,
+							"h": 280
+						}
+					},
+					{
+						"item": "g_trend",
+						"type": "block",
+						"position": {
+							"x": 730,
+							"y": 345,
+							"w": 690,
+							"h": 330
+						}
+					},
+					{
+						"item": "gt_trend",
+						"type": "block",
+						"position": {
+							"x": 748,
+							"y": 355,
+							"w": 654,
+							"h": 30
+						}
+					},
+					{
+						"item": "viz_trend",
+						"type": "block",
+						"position": {
+							"x": 746,
+							"y": 385,
+							"w": 658,
+							"h": 280
+						}
+					},
+					{
+						"item": "g_hist",
+						"type": "block",
+						"position": {
+							"x": 20,
+							"y": 690,
+							"w": 1400,
+							"h": 400
+						}
+					},
+					{
+						"item": "gt_hist",
+						"type": "block",
+						"position": {
+							"x": 38,
+							"y": 700,
+							"w": 1364,
+							"h": 30
+						}
+					},
+					{
+						"item": "tbl_history",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 730,
+							"w": 1368,
+							"h": 350
+						}
+					},
+					{
+						"item": "g_rec",
+						"type": "block",
+						"position": {
+							"x": 20,
+							"y": 1105,
+							"w": 1400,
+							"h": 430
+						}
+					},
+					{
+						"item": "gt_rec",
+						"type": "block",
+						"position": {
+							"x": 38,
+							"y": 1115,
+							"w": 1364,
+							"h": 30
+						}
+					},
+					{
+						"item": "tbl_recommend",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 1145,
+							"w": 1368,
+							"h": 380
+						}
+					},
+					{
+						"item": "g_recd",
+						"type": "block",
+						"position": {
+							"x": 20,
+							"y": 1550,
+							"w": 1400,
+							"h": 400
+						}
+					},
+					{
+						"item": "gt_recd",
+						"type": "block",
+						"position": {
+							"x": 38,
+							"y": 1560,
+							"w": 1364,
+							"h": 30
+						}
+					},
+					{
+						"item": "tbl_rec_detail",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 1590,
+							"w": 1368,
+							"h": 350
+						}
+					}
+				],
+				"options": {
+					"width": 1440,
+					"height": 1970,
+					"backgroundColor": "#1b1e47"
+				}
+			},
+			"layout_2": {
+				"type": "absolute",
+				"structure": [
+					{
+						"item": "h_title",
+						"type": "block",
+						"position": {
+							"x": 24,
+							"y": 14,
+							"w": 1000,
+							"h": 50
+						}
+					},
+					{
+						"item": "h_sub",
+						"type": "block",
+						"position": {
+							"x": 28,
+							"y": 62,
+							"w": 1100,
+							"h": 26
+						}
+					},
+					{
+						"item": "g_h_kpi",
+						"type": "block",
+						"position": {
+							"x": 20,
+							"y": 100,
+							"w": 1400,
+							"h": 170
+						}
+					},
+					{
+						"item": "gt_h_kpi",
+						"type": "block",
+						"position": {
+							"x": 38,
+							"y": 110,
+							"w": 1364,
+							"h": 30
+						}
+					},
+					{
+						"item": "h_t1",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 140,
+							"w": 327,
+							"h": 120
+						}
+					},
+					{
+						"item": "h_state",
+						"type": "block",
+						"position": {
+							"x": 46,
+							"y": 144,
+							"w": 307,
+							"h": 112
+						}
+					},
+					{
+						"item": "h_t2",
+						"type": "block",
+						"position": {
+							"x": 383,
+							"y": 140,
+							"w": 327,
+							"h": 120
+						}
+					},
+					{
+						"item": "h_found",
+						"type": "block",
+						"position": {
+							"x": 393,
+							"y": 144,
+							"w": 307,
+							"h": 112
+						}
+					},
+					{
+						"item": "h_t4",
+						"type": "block",
+						"position": {
+							"x": 730,
+							"y": 140,
+							"w": 327,
+							"h": 120
+						}
+					},
+					{
+						"item": "h_logs",
+						"type": "block",
+						"position": {
+							"x": 740,
+							"y": 144,
+							"w": 307,
+							"h": 112
+						}
+					},
+					{
+						"item": "h_t3",
+						"type": "block",
+						"position": {
+							"x": 1077,
+							"y": 140,
+							"w": 327,
+							"h": 120
+						}
+					},
+					{
+						"item": "h_cip",
+						"type": "block",
+						"position": {
+							"x": 1087,
+							"y": 144,
+							"w": 307,
+							"h": 112
+						}
+					},
+					{
+						"item": "g_h_cf",
+						"type": "block",
+						"position": {
+							"x": 20,
+							"y": 285,
+							"w": 1400,
+							"h": 300
+						}
+					},
+					{
+						"item": "h_cf_close",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 297,
+							"w": 1368,
+							"h": 46
+						}
+					},
+					{
+						"item": "h_cipfails",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 345,
+							"w": 1368,
+							"h": 228
+						}
+					},
+					{
+						"item": "g_h_alerts_c",
+						"type": "block",
+						"position": {
+							"x": 20,
+							"y": 285,
+							"w": 1400,
+							"h": 300
+						}
+					},
+					{
+						"item": "h_alerts_c",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 297,
+							"w": 1368,
+							"h": 278
+						}
+					},
+					{
+						"item": "g_h_alerts_o",
+						"type": "block",
+						"position": {
+							"x": 20,
+							"y": 600,
+							"w": 1400,
+							"h": 300
+						}
+					},
+					{
+						"item": "h_alerts_o",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 612,
+							"w": 1368,
+							"h": 278
+						}
+					},
+					{
+						"item": "g_h_runs_c",
+						"type": "block",
+						"position": {
+							"x": 20,
+							"y": 600,
+							"w": 1400,
+							"h": 420
+						}
+					},
+					{
+						"item": "h_runs_c",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 612,
+							"w": 1368,
+							"h": 398
+						}
+					},
+					{
+						"item": "g_h_runs_o",
+						"type": "block",
+						"position": {
+							"x": 20,
+							"y": 915,
+							"w": 1400,
+							"h": 420
+						}
+					},
+					{
+						"item": "h_runs_o",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 927,
+							"w": 1368,
+							"h": 398
+						}
+					},
+					{
+						"item": "g_h_guide_c",
+						"type": "block",
+						"position": {
+							"x": 20,
+							"y": 1035,
+							"w": 1400,
+							"h": 330
+						}
+					},
+					{
+						"item": "h_guide_c",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 1047,
+							"w": 1368,
+							"h": 308
+						}
+					},
+					{
+						"item": "g_h_guide_o",
+						"type": "block",
+						"position": {
+							"x": 20,
+							"y": 1350,
+							"w": 1400,
+							"h": 330
+						}
+					},
+					{
+						"item": "h_guide_o",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 1362,
+							"w": 1368,
+							"h": 308
+						}
+					},
+					{
+						"item": "g_h_loghist_c",
+						"type": "block",
+						"position": {
+							"x": 20,
+							"y": 1380,
+							"w": 1400,
+							"h": 420
+						}
+					},
+					{
+						"item": "h_loghist_c",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 1392,
+							"w": 1368,
+							"h": 398
+						}
+					},
+					{
+						"item": "g_h_loghist_o",
+						"type": "block",
+						"position": {
+							"x": 20,
+							"y": 1695,
+							"w": 1400,
+							"h": 420
+						}
+					},
+					{
+						"item": "h_loghist_o",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 1707,
+							"w": 1368,
+							"h": 398
+						}
+					},
+					{
+						"item": "g_h_lguide_c",
+						"type": "block",
+						"position": {
+							"x": 20,
+							"y": 1815,
+							"w": 1400,
+							"h": 250
+						}
+					},
+					{
+						"item": "h_lguide_c",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 1827,
+							"w": 1368,
+							"h": 228
+						}
+					},
+					{
+						"item": "g_h_lguide_o",
+						"type": "block",
+						"position": {
+							"x": 20,
+							"y": 2130,
+							"w": 1400,
+							"h": 250
+						}
+					},
+					{
+						"item": "h_lguide_o",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 2142,
+							"w": 1368,
+							"h": 228
+						}
+					}
+				],
+				"options": {
+					"width": 1440,
+					"height": 2400,
+					"backgroundColor": "#1b1e47"
+				}
+			},
+			"layout_3": {
+				"type": "absolute",
+				"structure": [
+					{
+						"item": "p_bg",
+						"type": "block",
+						"position": {
+							"x": 20,
+							"y": 20,
+							"w": 1400,
+							"h": 3130
+						}
+					},
+					{
+						"item": "p_title",
+						"type": "block",
+						"position": {
+							"x": 40,
+							"y": 30,
+							"w": 1360,
+							"h": 70
+						}
+					},
+					{
+						"item": "p_card_bg",
+						"type": "block",
+						"position": {
+							"x": 40,
+							"y": 108,
+							"w": 1360,
+							"h": 400
+						}
+					},
+					{
+						"item": "p_card_title",
+						"type": "block",
+						"position": {
+							"x": 64,
+							"y": 118,
+							"w": 1312,
+							"h": 56
+						}
+					},
+					{
+						"item": "p_card",
+						"type": "block",
+						"position": {
+							"x": 64,
+							"y": 174,
+							"w": 1312,
+							"h": 56
+						}
+					},
+					{
+						"item": "p_info_bg0",
+						"type": "block",
+						"position": {
+							"x": 64,
+							"y": 238,
+							"w": 800,
+							"h": 92
+						}
+					},
+					{
+						"item": "p_info_l0",
+						"type": "block",
+						"position": {
+							"x": 80,
+							"y": 244,
+							"w": 768,
+							"h": 30
+						}
+					},
+					{
+						"item": "p_info_v0",
+						"type": "block",
+						"position": {
+							"x": 80,
+							"y": 272,
+							"w": 768,
+							"h": 48
+						}
+					},
+					{
+						"item": "p_info_bg1",
+						"type": "block",
+						"position": {
+							"x": 880,
+							"y": 238,
+							"w": 496,
+							"h": 92
+						}
+					},
+					{
+						"item": "p_info_l1",
+						"type": "block",
+						"position": {
+							"x": 896,
+							"y": 244,
+							"w": 464,
+							"h": 30
+						}
+					},
+					{
+						"item": "p_info_v1",
+						"type": "block",
+						"position": {
+							"x": 896,
+							"y": 272,
+							"w": 464,
+							"h": 48
+						}
+					},
+					{
+						"item": "p_card_line",
+						"type": "block",
+						"position": {
+							"x": 64,
+							"y": 346,
+							"w": 1312,
+							"h": 2
+						}
+					},
+					{
+						"item": "p_next_label",
+						"type": "block",
+						"position": {
+							"x": 64,
+							"y": 356,
+							"w": 1312,
+							"h": 30
+						}
+					},
+					{
+						"item": "p_next",
+						"type": "block",
+						"position": {
+							"x": 64,
+							"y": 384,
+							"w": 1312,
+							"h": 32
+						}
+					},
+					{
+						"item": "p_btn_bg",
+						"type": "block",
+						"position": {
+							"x": 64,
+							"y": 428,
+							"w": 520,
+							"h": 44
+						}
+					},
+					{
+						"item": "p_btn",
+						"type": "block",
+						"position": {
+							"x": 84,
+							"y": 432,
+							"w": 500,
+							"h": 36
+						}
+					},
+					{
+						"item": "p_card_tech",
+						"type": "block",
+						"position": {
+							"x": 64,
+							"y": 476,
+							"w": 1312,
+							"h": 30
+						}
+					},
+					{
+						"item": "p_scen",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 524,
+							"w": 1368,
+							"h": 250
+						}
+					},
+					{
+						"item": "p_toggle",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 790,
+							"w": 1368,
+							"h": 56
+						}
+					},
+					{
+						"item": "p_close",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 790,
+							"w": 1368,
+							"h": 56
+						}
+					},
+					{
+						"item": "p_guide",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 856,
+							"w": 1368,
+							"h": 440
+						}
+					},
+					{
+						"item": "p_checks",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 1306,
+							"w": 1368,
+							"h": 450
+						}
+					},
+					{
+						"item": "p_list",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 1766,
+							"w": 1368,
+							"h": 520
+						}
+					},
+					{
+						"item": "p_raw",
+						"type": "block",
+						"position": {
+							"x": 36,
+							"y": 2296,
+							"w": 1368,
+							"h": 840
+						}
+					}
+				],
+				"options": {
+					"width": 1440,
+					"height": 3170,
+					"backgroundColor": "#1b1e47"
+				}
+			}
+		}
+	}
+}

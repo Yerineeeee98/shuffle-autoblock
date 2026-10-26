@@ -1,0 +1,191 @@
+`cip_ab_logs` earliest=-82m@m latest=now
+
+[
+    search index=`cip_ti_index` earliest=-62m@m latest=-2m@m
+    | `cip_ti_severity`
+    | eval self_egress=if(coalesce(ti_self_egress,0)=1,"ours","")
+    | eval fw_action=mvappend(if(_est>0,"established",null()), if(_att>0,"attempted",null()), if(blocked_count>0,"blocked",null()))
+    | mvexpand fw_action
+    | lookup cip_ti_alert_scope direction AS ti_direction action AS fw_action OUTPUT enabled AS scope_enabled min_confidence AS scope_minconf
+    | eval scope_enabled=coalesce(scope_enabled,0), scope_minconf=coalesce(if(scope_minconf="",null(),scope_minconf),101)
+    | where scope_enabled=1 AND ti_confidence>=scope_minconf
+    | dedup dedup_key
+    | eval investigation_keys=mvmap(devices,
+        srcip."|".dstip."|".devices."|".printf("%.0f",tonumber(window_start))."|".printf("%.0f",tonumber(window_end)))
+    | eval _ours=if(self_egress="ours",1,0), seen_epoch=coalesce(last_seen_epoch,_time)
+    | sort 0 - sev_tier, - seen_epoch
+    | stats first(ti_profile) AS ti_profile, first(ti_reason) AS ti_reason, max(ti_confidence) AS ti_confidence,
+            sum(_est) AS established_count, sum(_att) AS attempted_count, sum(blocked_count) AS blocked_count,
+            max(_ours) AS _ours, values(investigation_keys) AS investigation_keys
+      BY match_ip ti_direction
+    | `cip_ti_severity`
+    | where severity IN ("critical","high") AND _ours=0
+    | eval ti_candidate_key=match_ip."|".ti_direction
+    | dedup match_ip
+    | eval search=match_ip
+    | fields search
+    | appendpipe [ stats count | where count=0 | eval search="cip_ab_no_candidate" | fields search ]
+]
+
+| `cip_ab_normalize`
+
+| eval log_window=floor(_time/600)*600
+| eval traffic_window=if(ab_is_traffic=1, log_window, null()),
+       utm_window=if(ab_is_traffic=0, log_window, null())
+
+| eval ips_src=if(ab_ips=1 AND ab_from_init=1,1,0),
+       ips_dst=if(ab_ips=1 AND ab_from_init=0,1,0),
+       av_src=if(ab_av=1 AND ab_from_init=1,1,0),
+       av_dst=if(ab_av=1 AND ab_from_init=0,1,0)
+| eval detail=if(ab_ips=1 OR ab_av=1 OR ab_web=1,
+    strftime(_time,"%m-%d %H:%M:%S")." ".srcip."→".dstip." ".ab_kind." ".trim(ab_name).if(ab_ips=1 AND isnotnull(severity), " [severity: ".lower(severity)."]", "")." (".ab_dir_text.", ".ab_action.")",
+    null())
+| eval raw_cut="(detected as: ".coalesce(ab_detect,trim(ab_name)).") :: ".substr(_raw,1,3000)
+| eval r_ips_s=if(ips_src=1, "IPS log ".raw_cut, null()),
+       r_ips_d=if(ips_dst=1, "IPS log ".raw_cut, null()),
+       r_av_s=if(av_src=1, "antivirus log ".raw_cut, null()),
+       r_av_d=if(av_dst=1, "antivirus log ".raw_cut, null()),
+       r_web=if(ab_web=1, "web filter log ".raw_cut, null())
+| stats count(eval(ab_is_traffic=1)) AS t_cnt
+        sum(ips_src) AS s_ips_src sum(ips_dst) AS s_ips_dst
+        sum(av_src) AS s_av_src sum(av_dst) AS s_av_dst
+        sum(ab_web) AS s_web
+        values(traffic_window) AS traffic_window
+        values(utm_window) AS utm_window
+        values(detail) AS detail
+        values(r_ips_s) AS r_ips_s values(r_ips_d) AS r_ips_d
+        values(r_av_s) AS r_av_s values(r_av_d) AS r_av_d values(r_web) AS r_web
+  BY devname srcip dstip ab_session
+| eval key_window=if(t_cnt>0, traffic_window, utm_window)
+| mvexpand key_window
+| eval investigation_keys=srcip."|".dstip."|".devname."|".printf("%.0f",key_window)."|".printf("%.0f",key_window+600)
+| stats count AS sessions
+        sum(s_ips_src) AS ips_src sum(s_ips_dst) AS ips_dst
+        sum(s_av_src) AS av_src sum(s_av_dst) AS av_dst
+        sum(s_web) AS web
+        values(detail) AS detail
+        values(r_ips_s) AS r_ips_s values(r_ips_d) AS r_ips_d
+        values(r_av_s) AS r_av_s values(r_av_d) AS r_av_d values(r_web) AS r_web
+  BY investigation_keys
+| eval _part="log"
+
+| append [
+    search index=`cip_ti_index` earliest=-62m@m latest=-2m@m
+    | `cip_ti_severity`
+    | eval self_egress=if(coalesce(ti_self_egress,0)=1,"ours","")
+    | eval fw_action=mvappend(if(_est>0,"established",null()), if(_att>0,"attempted",null()), if(blocked_count>0,"blocked",null()))
+    | mvexpand fw_action
+    | lookup cip_ti_alert_scope direction AS ti_direction action AS fw_action OUTPUT enabled AS scope_enabled min_confidence AS scope_minconf
+    | eval scope_enabled=coalesce(scope_enabled,0), scope_minconf=coalesce(if(scope_minconf="",null(),scope_minconf),101)
+    | where scope_enabled=1 AND ti_confidence>=scope_minconf
+    | dedup dedup_key
+    | eval investigation_keys=mvmap(devices,
+        srcip."|".dstip."|".devices."|".printf("%.0f",tonumber(window_start))."|".printf("%.0f",tonumber(window_end)))
+    | eval _ours=if(self_egress="ours",1,0), seen_epoch=coalesce(last_seen_epoch,_time)
+    | sort 0 - sev_tier, - seen_epoch
+    | stats first(ti_profile) AS ti_profile, first(ti_reason) AS ti_reason, max(ti_confidence) AS ti_confidence,
+            sum(_est) AS established_count, sum(_att) AS attempted_count, sum(blocked_count) AS blocked_count,
+            max(_ours) AS _ours, values(investigation_keys) AS investigation_keys
+      BY match_ip ti_direction
+    | `cip_ti_severity`
+    | where severity IN ("critical","high") AND _ours=0
+    | eval ti_candidate_key=match_ip."|".ti_direction
+    | mvexpand investigation_keys
+    | fields ti_candidate_key match_ip ti_direction severity investigation_keys
+    | eval _part="cand"
+]
+
+| stats values(ti_candidate_key) AS ti_candidate_key
+        values(match_ip) AS match_ip
+        values(ti_direction) AS ti_direction
+        values(severity) AS severity
+        sum(sessions) AS sessions
+        sum(ips_src) AS ips_src sum(ips_dst) AS ips_dst
+        sum(av_src) AS av_src sum(av_dst) AS av_dst
+        sum(web) AS web
+        values(detail) AS detail
+        values(r_ips_s) AS r_ips_s values(r_ips_d) AS r_ips_d
+        values(r_av_s) AS r_av_s values(r_av_d) AS r_av_d values(r_web) AS r_web
+  BY investigation_keys
+| where isnotnull(ti_candidate_key)
+| eval linked=if(coalesce(sessions,0)>0,1,0)
+
+| eval fw_dev=if(linked=1, mvindex(split(investigation_keys,"|"),2), null())
+| eval c_ips=if(ti_direction="outbound", coalesce(ips_dst,0), coalesce(ips_src,0)),
+       c_av=if(ti_direction="outbound", coalesce(av_dst,0), coalesce(av_src,0)),
+       c_web=if(ti_direction="outbound", coalesce(web,0), 0)
+| eval r_ips=if(ti_direction="outbound", r_ips_d, r_ips_s),
+       r_av=if(ti_direction="outbound", r_av_d, r_av_s),
+       r_web=if(ti_direction="outbound", r_web, null())
+
+| stats first(match_ip) AS match_ip first(ti_direction) AS ti_direction first(severity) AS severity
+        count AS investigation_count
+        sum(linked) AS linked_investigation_count
+        sum(c_ips) AS c_ips sum(c_av) AS c_av sum(c_web) AS c_web
+        values(detail) AS detection_details
+        values(fw_dev) AS fw_devices
+        values(r_ips) AS raw_ips values(r_av) AS raw_av values(r_web) AS raw_web
+  BY ti_candidate_key
+| eval raw_logs=mvappend(mvindex(raw_ips,0,1), mvindex(raw_av,0,1), mvindex(raw_web,0,1))
+| eval cond_ips=if(c_ips>0,1,0), cond_av=if(c_av>0,1,0), cond_web=if(c_web>0,1,0)
+| eval met_count=cond_ips+cond_av+cond_web,
+       met_list=mvappend(if(cond_ips=1,"IPS attack",null()),
+                         if(cond_av=1,"antivirus detection",null()),
+                         if(cond_web=1,"phishing and malicious web",null()))
+| eval evidence_review_status=if(linked_investigation_count=investigation_count,"checked","incomplete")
+
+| eval decision=case(
+    evidence_review_status="incomplete","recommend",
+    severity="critical" AND met_count>=1,"auto_block",
+    severity="high" AND ti_direction="outbound" AND met_count=3,"auto_block",
+    severity="high" AND ti_direction="inbound" AND cond_ips=1 AND cond_av=1,"auto_block",
+    true(),"recommend"
+)
+| eval decision_reason=case(
+    decision="auto_block", "Auto-block conditions met: ".mvjoin(met_list,", "),
+    evidence_review_status="incomplete", "Investigation incomplete: ".linked_investigation_count." of ".investigation_count." windows linked to logs",
+    met_count>0, "Some conditions met (".met_count."/3): ".mvjoin(met_list,", "),
+    true(), "No additional evidence")
+
+| eval _time=now(),
+       run_time=strftime(now(),"%Y-%m-%d %H:%M:%S"),
+       met_conditions=mvjoin(met_list,", "),
+       detections=mvjoin(detection_details," || ")
+| fields ti_candidate_key match_ip ti_direction severity decision decision_reason
+         cond_ips cond_av cond_web met_count met_conditions
+         evidence_review_status investigation_count linked_investigation_count
+         detection_details detections fw_devices raw_logs run_time
+| collect index=summary source="ti_autoblock_alert"
+
+| where decision="auto_block"
+
+| eval sev_rank=if(severity="critical",2,1)
+| sort 0 - sev_rank
+| dedup match_ip
+| eval block_ip=match_ip,
+       block_name="SOAR_Deny_TI_".match_ip,
+       block_comment=substr(replace("SOAR TI | ".severity." ".ti_direction." | ".decision_reason." | ".strftime(now(),"%Y-%m-%d %H:%M"), "[\"\\\\]", ""), 1, 250)
+| eval int_ip=coalesce(mvdedup(mvmap(detection_details, if(ti_direction="outbound",
+        replace(detection_details, "^\S+ \S+ (\S+)→.*$", "\1"),
+        replace(detection_details, "^\S+ \S+ \S+→(\S+) .*$", "\1")))), "-")
+| mvexpand int_ip
+| join type=left max=1 int_ip [
+    search `cip_ab_dhcp_logs` earliest=-8d@d latest=now
+    | rex max_match=10 field=_raw "(?<int_ip>\d{1,3}(?:\.\d{1,3}){3})"
+    | mvexpand int_ip
+    | stats latest(_raw) AS dhcp_raw BY int_ip
+  ]
+| rex field=dhcp_raw "hostname=\"?(?<pc_name>[^\"\s]+)"
+| eval src_host=if(isnotnull(pc_name), int_ip."=".trim(pc_name), null()),
+       dhcp_line=if(isnotnull(dhcp_raw), "DHCP log for ".int_ip." :: ".substr(dhcp_raw,1,1500), null())
+| stats first(sev_rank) AS sev_rank first(ti_direction) AS ti_direction first(severity) AS severity
+        first(decision) AS decision first(decision_reason) AS decision_reason
+        first(block_ip) AS block_ip first(block_name) AS block_name first(block_comment) AS block_comment
+        first(investigation_count) AS investigation_count first(linked_investigation_count) AS linked_investigation_count
+        values(detection_details) AS detection_details values(fw_devices) AS fw_devices
+        values(src_host) AS src_hosts values(raw_logs) AS raw_logs values(dhcp_line) AS dhcp_logs
+  BY match_ip
+| sort 0 - sev_rank
+| table match_ip ti_direction severity decision decision_reason
+        block_ip block_name block_comment
+        investigation_count linked_investigation_count detection_details fw_devices src_hosts raw_logs dhcp_logs

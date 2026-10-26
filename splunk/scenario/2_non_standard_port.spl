@@ -1,0 +1,63 @@
+```Allowed traffic logs (macro: cip_sc_traffic)```
+`cip_sc_traffic`
+earliest=-16m@m latest=-1m@m
+
+
+```Common field names (macro: cip_sc_normalize)```
+| `cip_sc_normalize`
+
+```Keep only internal PC -> public IP```
+| where (cidrmatch("10.0.0.0/8", ab_src) OR cidrmatch("172.16.0.0/12", ab_src) OR cidrmatch("192.168.0.0/16", ab_src))
+    AND NOT (cidrmatch("10.0.0.0/8", ab_dst) OR cidrmatch("172.16.0.0/12", ab_dst) OR cidrmatch("192.168.0.0/16", ab_dst)
+          OR cidrmatch("127.0.0.0/8", ab_dst) OR cidrmatch("169.254.0.0/16", ab_dst) OR cidrmatch("100.64.0.0/10", ab_dst)
+          OR cidrmatch("224.0.0.0/3", ab_dst) OR cidrmatch("0.0.0.0/8", ab_dst))
+
+```Event time = the PC's last non-standard port connection in the last 10 minutes (PCs without one are dropped below)```
+```Trigger: TCP or UDP to a public IP on a port that is NOT web (80, 443) or a risky port.
+   Edit this list to change which ports count as non-standard.```
+| eval is_rp=if(in(lower(tostring(ab_proto)), "6","17","tcp","udp")
+              AND NOT in(tostring(ab_dport),
+         "80","443","22","445","1104","3306","3389")
+              AND _time >= relative_time(now(), "-11m@m"), 1, 0)
+| eventstats max(eval(if(is_rp=1, _time, null()))) AS evt_time,
+             dc(eval(if(is_rp=1, ab_sess, null()))) AS hit_sess,
+             values(eval(if(is_rp=1, ab_dport, null()))) AS hit_port
+  BY ab_src
+```Raw log of the last trigger connection (for the AI summary)```
+| eventstats values(eval(if(is_rp=1 AND _time=evt_time, substr(_raw, 1, 1500), null()))) AS trig_raw BY ab_src
+
+```Keep the 5 minutes before the event time (all ports, all public IPs)```
+| where isnotnull(evt_time) AND _time >= evt_time - 300 AND _time <= evt_time
+
+```One row per PC, public IP, port```
+| stats count, dc(ab_sess) AS sess, first(_raw) AS raw_new, last(_raw) AS raw_old,
+        values(ab_pc) AS srcname, values(ab_fw) AS fw_devices, values(ab_user) AS traffic_user,
+        max(hit_sess) AS hit_sess, values(hit_port) AS hit_port, values(trig_raw) AS trig_raw
+  BY ab_src ab_dst ab_dport ab_proto evt_time
+| rename ab_src AS srcip, ab_dst AS dstip, ab_dport AS dstport, ab_proto AS proto
+```Keep at most 10 trigger ports for display; hit_port_count has the full number```
+| eval hit_port_count=mvcount(hit_port), hit_port=mvindex(hit_port, 0, 9)
+
+```Sessions per public IP (all ports). Shuffle auto-blocks only when ip_sess >= 3 AND CIP is risky```
+| eventstats sum(sess) AS ip_sess BY srcip dstip
+| eval cond1=if(ip_sess >= 3, "met", "-")
+```Keep only outside IPs with 3+ sessions: only these can be auto-blocked, so only these go to CIP```
+| where cond1="met"
+
+```PC name from DHCP logs (macro: cip_sc_dhcp)```
+| join type=left max=1 srcip [ search `cip_sc_dhcp` | stats latest(dhcp_host) AS dhcp_name BY dhcp_ip | rename dhcp_ip AS srcip ]
+
+| eval scen_id="outbound_nonstd_port",
+       scen_name="Non-standard port access",
+       hit_time=strftime(evt_time, "%m/%d %H:%M:%S")
+| sort 0 srcip, - ip_sess, dstip, - sess
+```Raw trigger log only on the first row of each PC (keeps the result small, used by the AI summary)```
+| streamstats count AS row_no BY srcip
+| eval trig_raw=if(row_no=1, mvindex(trig_raw, 0, 1), null())
+```Up to 2 raw logs to the outside IP, only when cond1=met (only these IPs can be auto-blocked; used by the AI summary)```
+| streamstats count AS ip_row BY srcip dstip
+| eval ip_raw=if(ip_row=1 AND isnotnull(mvfind(cond1, "^met$")), mvdedup(mvappend(substr(raw_old, 1, 1000), substr(raw_new, 1, 1000))), null())
+| fields - row_no ip_row raw_new raw_old
+| table scen_id, scen_name, srcip, srcname, dhcp_name,
+        dstip, dstport, proto, sess, ip_sess, cond1, count,
+        hit_port, hit_port_count, hit_sess, evt_time, hit_time, fw_devices, traffic_user, trig_raw, ip_raw
