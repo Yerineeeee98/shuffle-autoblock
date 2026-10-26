@@ -75,7 +75,9 @@ The other alerts send every public IP, and the IPs without `cond1=met` are saved
 | Schedule | Cron `37 * * * *` (every hour at minute 37) |
 | Time range | Last 24 hours (the search sets its own `earliest` for each part) |
 | Schedule window | No window |
-| Saves to | `index=summary source="scen_autoblock_health"` |
+
+No setting is needed to save the result: the last line of the search
+(`| collect index=summary source="scen_autoblock_health"`) saves it.
 
 It checks the logs the alerts read (traffic: last 15 minutes, security logs: 24 hours, DHCP: 24 hours,
 Defender: 7 days) and writes one row with a verdict (`OK`, `Warning: ...`, `Problem: ...`).
