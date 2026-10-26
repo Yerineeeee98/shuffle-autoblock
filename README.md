@@ -5,7 +5,7 @@ Splunk files for two Shuffle workflows that check outside IPs with Criminal IP a
 | Workflow | Started by | What it does |
 |---|---|---|
 | Scenario auto-block | 5 Splunk alerts (risky port, non-standard port, phishing, malware, firewall admin login) | Looks up the public IPs a suspicious PC talked to in Criminal IP, judges them with 6 indicators, and blocks the risky ones |
-| TI feed auto-block | 1 Splunk alert (TA-cip-ti-feed app) | Blocks critical / high TI feed IPs that also show up in the firewall threat logs (IPS, antivirus, web filter) |
+| TI feed auto-block |  Splunk alert (TA-cip-ti-feed app) | Blocks critical / high TI feed IPs that also show up in the firewall threat logs (IPS, antivirus, web filter) |
 
 Both workflows add the IP to a FortiGate address group, send a Slack alert with an AI summary of the raw logs,
 and save the result back to Splunk (`index=summary`).
